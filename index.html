@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drone Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: #1a1a2e; color: white; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2rem; text-align: center; }
+        .header h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
+        .controls { padding: 1rem; background: #16213e; display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap; }
+        .btn { padding: 0.75rem 1.5rem; border: none; border-radius: 8px; background: #667eea; color: white; font-size: 1rem; cursor: pointer; }
+        .btn:hover { background: #5568d3; }
+        select { padding: 0.75rem; border-radius: 8px; background: #0f3460; color: white; border: 1px solid #667eea; font-size: 1rem; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; padding: 2rem; }
+        .stat-card { background: #16213e; padding: 1.5rem; border-radius: 12px; text-align: center; border: 2px solid #667eea; }
+        .stat-card h3 { font-size: 2.5rem; color: #667eea; margin-bottom: 0.5rem; }
+        .stat-card p { color: #a0a0a0; }
+        #map { width: 100%; height: 600px; margin: 0; }
+        .map-container { padding: 0; }
+        .legend { padding: 1rem 2rem; background: #16213e; display: flex; gap: 2rem; justify-content: center; flex-wrap: wrap; }
+        .legend-item { display: flex; align-items: center; gap: 0.5rem; }
+        .legend-marker { width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; }
+        .sightings { padding: 2rem; }
+        .sightings h2 { margin-bottom: 1rem; }
+        .sighting-item { background: #16213e; padding: 1rem; margin-bottom: 1rem; border-radius: 8px; border-left: 4px solid #667eea; }
+        .sighting-item h4 { margin-bottom: 0.5rem; color: #667eea; }
+        .footer { text-align: center; padding: 2rem; background: #0f3460; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🛰️ Drone Map</h1>
+        <p>Europe & Ukraine Real-time Tracker</p>
+    </div>
+
+    <div class="controls">
+        <button id="refreshBtn" class="btn">🔄 Refresh Data</button>
+        <select id="timeFilter">
+            <option value="6">Last 6 Hours</option>
+            <option value="24" selected>Last 24 Hours</option>
+            <option value="72">Last 3 Days</option>
+            <option value="168">Last Week</option>
+        </select>
+    </div>
+
+    <div class="stats">
+        <div class="stat-card">
+            <h3 id="totalSightings">-</h3>
+            <p>Total Sightings</p>
+        </div>
+        <div class="stat-card">
+            <h3 id="recentSightings">-</h3>
+            <p>Recent Activity</p>
+        </div>
+        <div class="stat-card">
+            <h3 id="verifiedSightings">-</h3>
+            <p>Verified</p>
+        </div>
+        <div class="stat-card">
+            <h3 id="criticalThreats">-</h3>
+            <p>Critical Threats</p>
+        </div>
+    </div>
+
+    <div class="map-container">
+        <div id="map"></div>
+    </div>
+
+    <div class="legend">
+        <div class="legend-item">
+            <span class="legend-marker" style="background: #10b981;"></span>
+            <span>Low</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-marker" style="background: #f59e0b;"></span>
+            <span>Medium</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-marker" style="background: #ef4444;"></span>
+            <span>High</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-marker" style="background: #dc2626;"></span>
+            <span>Critical</span>
+        </div>
+    </div>
+
+    <div class="sightings">
+        <h2>📋 Recent Sightings</h2>
+        <div id="sightingsList"></div>
+    </div>
+
+    <div class="footer">
+        <p>Last updated: <span id="lastUpdate">-</span></p>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    <script>
+        let map, markers = [], heatLayer, currentTimeFilter = 24;
+
+        function init() {
+            map = L.map('map').setView([50.4501, 30.5234], 6);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap'
+            }).addTo(map);
+
+            document.getElementById('refreshBtn').addEventListener('click', loadData);
+            document.getElementById('timeFilter').addEventListener('change', (e) => {
+                currentTimeFilter = parseInt(e.target.value);
+                loadData();
+            });
+
+            loadData();
+            setInterval(loadData, 300000);
+        }
+
+        function loadData() {
+            const data = generateMockData();
+            updateStats(data.stats);
+            updateMap(data.sightings);
+            updateSightings(data.sightings);
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleString();
+        }
+
+        function generateMockData() {
+            const types = ['Quadcopter', 'Shahed-136', 'Orlan-10', 'Bayraktar TB2', 'Commercial', 'Unknown'];
+            const threats = ['low', 'medium', 'high', 'critical'];
+            const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+            const locations = [
+                { name: 'Kyiv', lat: 50.4501, lon: 30.5234 },
+                { name: 'Lviv', lat: 49.8397, lon: 24.0297 },
+                { name: 'Kharkiv', lat: 49.9935, lon: 36.2304 },
+                { name: 'Odesa', lat: 46.4825, lon: 30.7233 },
+                { name: 'Dnipro', lat: 48.4647, lon: 35.0462 }
+            ];
+
+            const sightings = [];
+            const count = Math.floor(Math.random() * 20) + 30;
+
+            for (let i = 0; i < count; i++) {
+                const loc = locations[Math.floor(Math.random() * locations.length)];
+                const hoursAgo = Math.random() * currentTimeFilter;
+                const timestamp = new Date(Date.now() - hoursAgo * 3600000);
+
+                sightings.push({
+                    id: i + 1,
+                    lat: loc.lat + (Math.random() - 0.5),
+                    lon: loc.lon + (Math.random() - 0.5),
+                    altitude: Math.floor(Math.random() * 5000) + 100,
+                    type: types[Math.floor(Math.random() * types.length)],
+                    direction: directions[Math.floor(Math.random() * directions.length)],
+                    speed: Math.floor(Math.random() * 130) + 20,
+                    region: `${loc.name}, Ukraine`,
+                    verified: Math.random() > 0.5,
+                    threat: threats[Math.floor(Math.random() * threats.length)],
+                    timestamp: timestamp
+                });
+            }
+
+            sightings.sort((a, b) => b.timestamp - a.timestamp);
+
+            const stats = {
+                total: Math.floor(Math.random() * 500) + 200,
+                recent: sightings.filter(s => (Date.now() - s.timestamp) / 3600000 <= 24).length,
+                verified: sightings.filter(s => s.verified).length,
+                critical: sightings.filter(s => s.threat === 'critical').length
+            };
+
+            return { stats, sightings };
+        }
+
+        function updateStats(stats) {
+            document.getElementById('totalSightings').textContent = stats.total;
+            document.getElementById('recentSightings').textContent = stats.recent;
+            document.getElementById('verifiedSightings').textContent = stats.verified;
+            document.getElementById('criticalThreats').textContent = stats.critical;
+        }
+
+        function updateMap(sightings) {
+            markers.forEach(m => map.removeLayer(m));
+            markers = [];
+            if (heatLayer) map.removeLayer(heatLayer);
+
+            const heatData = [];
+            const colors = { low: '#10b981', medium: '#f59e0b', high: '#ef4444', critical: '#dc2626' };
+
+            sightings.forEach(s => {
+                const icon = L.divIcon({
+                    html: `<div style="background: ${colors[s.threat]}; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white;"></div>`,
+                    iconSize: [20, 20]
+                });
+
+                const marker = L.marker([s.lat, s.lon], { icon }).addTo(map);
+                marker.bindPopup(`
+                    <b>${s.type}</b><br>
+                    ${s.region}<br>
+                    Alt: ${s.altitude}m | Speed: ${s.speed} km/h<br>
+                    Threat: ${s.threat}
+                `);
+                markers.push(marker);
+                heatData.push([s.lat, s.lon, 0.5]);
+            });
+
+            if (heatData.length > 0) {
+                heatLayer = L.heatLayer(heatData, { radius: 25, blur: 35 }).addTo(map);
+                const group = L.featureGroup(markers);
+                map.fitBounds(group.getBounds().pad(0.1));
+            }
+        }
+
+        function updateSightings(sightings) {
+            const list = document.getElementById('sightingsList');
+            const recent = sightings.slice(0, 10);
+            const emojis = { low: '🟢', medium: '🟡', high: '🔴', critical: '🚨' };
+
+            list.innerHTML = recent.map(s => {
+                const timeAgo = Math.floor((Date.now() - s.timestamp) / 60000);
+                const timeStr = timeAgo < 60 ? `${timeAgo}m ago` : `${Math.floor(timeAgo / 60)}h ago`;
+
+                return `
+                    <div class="sighting-item">
+                        <h4>${emojis[s.threat]} ${s.type}</h4>
+                        <p>📍 ${s.region} | ⬆️ ${s.altitude}m | 🧭 ${s.direction} | 💨 ${s.speed} km/h</p>
+                        <p>${timeStr} ${s.verified ? '✅ Verified' : ''}</p>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
