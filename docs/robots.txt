@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://inasjackw321.github.io/Drone-Map/sitemap.xml

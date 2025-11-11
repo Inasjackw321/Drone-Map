@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Real-time drone tracking system for Europe and Ukraine">
+    <title>Drone Map - Europe & Ukraine Tracker</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>🛰️ Drone Map</h1>
+                <p>Europe & Ukraine Real-time Tracker</p>
+            </div>
+            <div class="header-actions">
+                <button id="refreshBtn" class="btn btn-primary">🔄 Refresh</button>
+                <select id="timeFilter" class="select">
+                    <option value="6">Last 6 Hours</option>
+                    <option value="24" selected>Last 24 Hours</option>
+                    <option value="72">Last 3 Days</option>
+                    <option value="168">Last Week</option>
+                </select>
+            </div>
+        </header>
+
+        <!-- Stats Dashboard -->
+        <section class="stats-grid" id="statsGrid">
+            <div class="stat-card">
+                <div class="stat-icon">📊</div>
+                <div class="stat-info">
+                    <h3 id="totalSightings">-</h3>
+                    <p>Total Sightings</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">🕐</div>
+                <div class="stat-info">
+                    <h3 id="recentSightings">-</h3>
+                    <p>Recent Activity</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">✅</div>
+                <div class="stat-info">
+                    <h3 id="verifiedSightings">-</h3>
+                    <p>Verified</p>
+                </div>
+            </div>
+            <div class="stat-card critical">
+                <div class="stat-icon">🚨</div>
+                <div class="stat-info">
+                    <h3 id="criticalThreats">-</h3>
+                    <p>Critical Threats</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Map Container -->
+        <section class="map-section">
+            <div class="map-header">
+                <h2>📍 Live Drone Activity Map</h2>
+                <div class="map-controls">
+                    <button id="viewFullscreen" class="btn btn-secondary">⛶ Fullscreen</button>
+                </div>
+            </div>
+            <div id="map" class="map-container"></div>
+            <div class="map-legend">
+                <h4>Threat Levels</h4>
+                <div class="legend-item">
+                    <span class="legend-marker low"></span>
+                    <span>Low</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-marker medium"></span>
+                    <span>Medium</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-marker high"></span>
+                    <span>High</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-marker critical"></span>
+                    <span>Critical</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Recent Sightings List -->
+        <section class="sightings-section">
+            <h2>📋 Recent Sightings</h2>
+            <div id="sightingsList" class="sightings-list">
+                <div class="loading">Loading sightings...</div>
+            </div>
+        </section>
+
+        <!-- Telegram Bot Info -->
+        <section class="bot-info">
+            <h2>🤖 Connect via Telegram Bot</h2>
+            <p>Get real-time alerts and interactive tracking directly in Telegram:</p>
+            <div class="bot-commands">
+                <div class="command-item">
+                    <code>/start</code>
+                    <span>Get started with the bot</span>
+                </div>
+                <div class="command-item">
+                    <code>/track</code>
+                    <span>View recent drone sightings</span>
+                </div>
+                <div class="command-item">
+                    <code>/map</code>
+                    <span>Generate interactive map</span>
+                </div>
+                <div class="command-item">
+                    <code>/subscribe</code>
+                    <span>Get real-time alerts</span>
+                </div>
+                <div class="command-item">
+                    <code>/stats</code>
+                    <span>View statistics</span>
+                </div>
+                <div class="command-item">
+                    <code>/report</code>
+                    <span>Report a drone sighting</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Last updated: <span id="lastUpdate">-</span></p>
+            <p>Data updates every 5 minutes | <a href="https://github.com/Inasjackw321/Drone-Map" target="_blank">View on GitHub</a></p>
+            <p class="disclaimer">⚠️ This is a tracking and monitoring tool. Always verify information from official sources.</p>
+        </footer>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+        <div class="spinner"></div>
+        <p>Loading data...</p>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    <script src="assets/js/app.js"></script>
+</body>
+</html>

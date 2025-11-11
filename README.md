@@ -2,6 +2,12 @@
 
 A real-time drone tracking system with Telegram bot integration for monitoring drone activity in Europe and Ukraine.
 
+## 🌐 Live Demo
+
+**[View Live Demo on GitHub Pages](https://inasjackw321.github.io/Drone-Map/)**
+
+The demo runs with mock data for demonstration purposes. See [GITHUB_PAGES.md](GITHUB_PAGES.md) for deployment instructions.
+
 ## Features
 
 - 🤖 **Telegram Bot** - Interactive bot for tracking drones
@@ -27,6 +33,19 @@ Drone-Map/
 ├── requirements.txt      # Python dependencies
 └── .env                  # Environment variables (create from .env.example)
 ```
+
+## Quick Start Options
+
+### Option 1: GitHub Pages (Static Demo - Fastest)
+Deploy a static demo to GitHub Pages with mock data:
+```bash
+# Just enable GitHub Pages in your repository settings
+# The site deploys automatically via GitHub Actions
+```
+📖 **[Full GitHub Pages Guide](GITHUB_PAGES.md)**
+
+### Option 2: Full Installation (Telegram Bot + Backend)
+For the complete system with Telegram integration and real-time data.
 
 ## Prerequisites
 

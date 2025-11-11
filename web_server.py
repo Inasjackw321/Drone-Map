@@ -6,6 +6,7 @@ Web interface for viewing drone activity maps
 import sys
 import os
 from flask import Flask, render_template, jsonify, send_file
+from flask_cors import CORS
 from datetime import datetime, timedelta
 
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
@@ -15,6 +16,14 @@ from src.utils.map_generator import MapGenerator
 from src.config import config
 
 app = Flask(__name__)
+# Enable CORS for GitHub Pages integration
+CORS(app, resources={
+    r"/api/*": {
+        "origins": ["*"],
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"]
+    }
+})
 db = SessionLocal()
 map_generator = MapGenerator()
 
