@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  drone-map-bot:
+    build: .
+    container_name: drone-map-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./drone_map.db:/app/drone_map.db
+      - ./static:/app/static
+    command: python main.py --start-bot
+
+  drone-map-web:
+    build: .
+    container_name: drone-map-web
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./drone_map.db:/app/drone_map.db
+      - ./static:/app/static
+    command: python web_server.py
