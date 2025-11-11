@@ -1,10 +1,19 @@
 # Drone Tracker
 
-Live map showing drone locations from Telegram channel @kpszsu.
+Live map showing drone locations from multiple Telegram channels.
 
 ## Live Map
 
 https://inasjackw321.github.io/Drone-Map/
+
+## Channels Monitored
+
+- @kpszsu
+- @air_alert_ua
+- @ukraine_now_english
+- @nexta_live
+- @uniannet
+- @tchuky
 
 ## Setup
 
@@ -28,39 +37,49 @@ python telegram-scraper.py
 
 Follow prompts:
 - Enter API_ID and API_HASH
-- Choose QR code login (recommended)
-- Add channel: `kpszsu`
-- Select option [S] to scrape
+- Choose QR code login
+- Add all channels (paste each one):
+  - `kpszsu`
+  - `air_alert_ua`
+  - `ukraine_now_english`
+  - `nexta_live`
+  - `uniannet`
+  - `tchuky`
+- Press [S] to scrape all
 
 ### 4. Process Data
 
 ```bash
-python process_scraped_data.py kpszsu
+python process_scraped_data.py
 ```
 
-This extracts coordinates from messages and updates the map.
+Processes all channels and extracts drone coordinates.
 
-### 5. Auto-run (Optional)
+### 5. Auto-run
 
 ```bash
 while true; do
     python telegram-scraper.py
-    python process_scraped_data.py kpszsu
+    python process_scraped_data.py
     sleep 300
 done
 ```
 
-## Files
-
-- `telegram-scraper.py` - Main scraper (from unnohwn/telegram-scraper)
-- `process_scraped_data.py` - Extracts drone coordinates from scraped messages
-- `drone_data.json` - Drone locations data
-- `docs/` - GitHub Pages site
-
 ## How It Works
 
-1. Scraper downloads messages from @kpszsu channel
+1. Scraper downloads messages from all channels
 2. Processor extracts coordinates from messages
-3. Updates drone_data.json
+3. Updates drone_data.json with new sightings
 4. Auto-commits to GitHub
-5. GitHub Pages displays updated map
+5. GitHub Pages map updates automatically
+
+## Adding More Channels
+
+Edit `process_scraped_data.py` and add to CHANNELS list:
+
+```python
+CHANNELS = [
+    'kpszsu',
+    'your_channel_here'
+]
+```
