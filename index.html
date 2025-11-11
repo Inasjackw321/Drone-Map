@@ -3,49 +3,328 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Drone Tracker</title>
+    <title>Drone & Missile Tracker</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; }
-        #map { width: 100%; height: 100vh; }
+        body { font-family: 'Courier New', monospace; background: #000; color: #0f0; overflow: hidden; }
+
+        #map { width: 100%; height: 100vh; position: absolute; }
+
+        .hud {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 20, 0, 0.9);
+            border: 2px solid #0f0;
+            padding: 15px;
+            min-width: 300px;
+            max-width: 400px;
+            max-height: 80vh;
+            overflow-y: auto;
+            z-index: 1000;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+        }
+
+        .hud h2 {
+            color: #0f0;
+            border-bottom: 1px solid #0f0;
+            padding-bottom: 5px;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .stat {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            font-size: 14px;
+        }
+
+        .alert {
+            background: rgba(255, 0, 0, 0.2);
+            border: 1px solid #f00;
+            padding: 10px;
+            margin: 10px 0;
+            animation: blink 1s infinite;
+        }
+
+        .alert.critical {
+            color: #f00;
+            font-weight: bold;
+        }
+
+        .threat-item {
+            padding: 8px;
+            margin: 5px 0;
+            background: rgba(255, 255, 0, 0.1);
+            border-left: 3px solid;
+        }
+
+        .threat-item.drone { border-color: #ff0; }
+        .threat-item.missile { border-color: #f00; }
+
+        .status-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 20, 0, 0.9);
+            border-top: 2px solid #0f0;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            z-index: 1000;
+            font-size: 14px;
+        }
+
+        @keyframes blink {
+            0%, 50%, 100% { opacity: 1; }
+            25%, 75% { opacity: 0.3; }
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.8; }
+            50% { transform: scale(1.2); opacity: 1; }
+        }
+
+        .leaflet-popup-content-wrapper {
+            background: rgba(0, 20, 0, 0.95);
+            color: #0f0;
+            border: 2px solid #0f0;
+        }
+
+        .leaflet-popup-content {
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
     </style>
 </head>
 <body>
     <div id="map"></div>
+
+    <div class="hud">
+        <h2>⚠️ THREAT MONITOR</h2>
+        <div class="stat">
+            <span>ACTIVE DRONES:</span>
+            <span id="droneCount">0</span>
+        </div>
+        <div class="stat">
+            <span>ACTIVE MISSILES:</span>
+            <span id="missileCount">0</span>
+        </div>
+        <div class="stat">
+            <span>TOTAL THREATS:</span>
+            <span id="totalCount">0</span>
+        </div>
+        <div class="stat">
+            <span>LAST UPDATE:</span>
+            <span id="lastUpdate">--:--:--</span>
+        </div>
+
+        <h2 style="margin-top: 20px;">🚨 ACTIVE ALERTS</h2>
+        <div id="alertsList"></div>
+
+        <h2 style="margin-top: 20px;">📡 RECENT THREATS</h2>
+        <div id="threatsList"></div>
+    </div>
+
+    <div class="status-bar">
+        <span>🛰️ TRACKING SYSTEM: <span style="color: #0f0;">ONLINE</span></span>
+        <span>AUTO-REFRESH: 10s</span>
+        <span id="systemTime"></span>
+    </div>
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        const map = L.map('map').setView([50.4501, 30.5234], 6);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        const map = L.map('map', {
+            zoomControl: false,
+            attributionControl: false
+        }).setView([50.4501, 30.5234], 6);
+
+        // Dark map style
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            maxZoom: 19
+        }).addTo(map);
 
         let markers = [];
-        const DATA_URL = 'https://raw.githubusercontent.com/Inasjackw321/Drone-Map/claude/connect-th-011CV1rP4pSCsJfhq5XoR6yw/drone_data.json';
+        let alertCircles = [];
+
+        const REGIONS = [
+            {name: 'Kyiv', lat: 50.4501, lon: 30.5234},
+            {name: 'Lviv', lat: 49.8397, lon: 24.0297},
+            {name: 'Kharkiv', lat: 49.9935, lon: 36.2304},
+            {name: 'Odesa', lat: 46.4825, lon: 30.7233},
+            {name: 'Dnipro', lat: 48.4647, lon: 35.0462}
+        ];
+
+        // Add alert zones around major cities
+        function addAlertZones() {
+            REGIONS.forEach(region => {
+                L.circle([region.lat, region.lon], {
+                    radius: 50000,
+                    color: '#0f0',
+                    fillColor: '#0f0',
+                    fillOpacity: 0.05,
+                    weight: 1
+                }).addTo(map).bindPopup(`<b>${region.name}</b><br>Alert Zone: 50km`);
+            });
+        }
+
+        function getDistanceToNearestCity(lat, lon) {
+            let minDist = Infinity;
+            let nearestCity = null;
+
+            REGIONS.forEach(region => {
+                const dist = Math.sqrt(
+                    Math.pow(region.lat - lat, 2) +
+                    Math.pow(region.lon - lon, 2)
+                ) * 111; // Convert to km
+
+                if (dist < minDist) {
+                    minDist = dist;
+                    nearestCity = region.name;
+                }
+            });
+
+            return {city: nearestCity, distance: Math.round(minDist)};
+        }
+
+        function getThreatIcon(sighting) {
+            const colors = {
+                'drone': '#ffff00',
+                'missile': '#ff0000'
+            };
+            const color = colors[sighting.category] || '#00ff00';
+
+            return L.divIcon({
+                className: 'threat-marker',
+                html: `<div style="
+                    background: ${color};
+                    width: 20px;
+                    height: 20px;
+                    border-radius: 50%;
+                    border: 3px solid #fff;
+                    box-shadow: 0 0 15px ${color};
+                    animation: pulse 2s infinite;
+                "></div>`,
+                iconSize: [20, 20]
+            });
+        }
 
         async function loadData() {
             try {
-                const res = await fetch(DATA_URL + '?t=' + Date.now());
+                const res = await fetch('drone_data.json?t=' + Date.now());
                 const data = await res.json();
 
+                // Clear old markers
                 markers.forEach(m => map.removeLayer(m));
                 markers = [];
 
-                data.sightings.forEach(s => {
-                    const marker = L.marker([s.lat, s.lon]).addTo(map);
-                    marker.bindPopup(`<b>${s.type}</b><br>${s.description}<br><small>${new Date(s.timestamp).toLocaleString()}</small>`);
+                const sightings = data.sightings || [];
+                const drones = sightings.filter(s => s.category === 'drone');
+                const missiles = sightings.filter(s => s.category === 'missile');
+
+                // Update stats
+                document.getElementById('droneCount').textContent = drones.length;
+                document.getElementById('missileCount').textContent = missiles.length;
+                document.getElementById('totalCount').textContent = sightings.length;
+                document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+
+                // Generate alerts
+                const alerts = [];
+
+                sightings.forEach(s => {
+                    const {city, distance} = getDistanceToNearestCity(s.lat, s.lon);
+
+                    // Create marker
+                    const marker = L.marker([s.lat, s.lon], {
+                        icon: getThreatIcon(s)
+                    }).addTo(map);
+
+                    const timeAgo = Math.floor((Date.now() - new Date(s.timestamp)) / 60000);
+
+                    marker.bindPopup(`
+                        <b style="color: ${s.category === 'missile' ? '#f00' : '#ff0'};">
+                            ${s.type}
+                        </b><br>
+                        Category: ${s.category.toUpperCase()}<br>
+                        Speed: ${s.speed} km/h<br>
+                        Altitude: ${s.altitude}m<br>
+                        Direction: ${s.direction}<br>
+                        Nearest: ${city} (${distance}km)<br>
+                        Time: ${timeAgo}m ago
+                    `);
+
                     markers.push(marker);
+
+                    // Generate alert if within 100km
+                    if (distance < 100) {
+                        alerts.push({
+                            city: city,
+                            distance: distance,
+                            type: s.type,
+                            category: s.category,
+                            direction: s.direction
+                        });
+                    }
                 });
 
-                if (markers.length > 0) {
-                    const group = L.featureGroup(markers);
-                    map.fitBounds(group.getBounds().pad(0.1));
-                }
+                // Display alerts
+                displayAlerts(alerts);
+                displayThreats(sightings.slice(0, 10));
+
             } catch (e) {
                 console.error('Error:', e);
             }
         }
 
+        function displayAlerts(alerts) {
+            const alertsList = document.getElementById('alertsList');
+
+            if (alerts.length === 0) {
+                alertsList.innerHTML = '<div style="color: #0f0; padding: 10px;">No immediate threats</div>';
+                return;
+            }
+
+            alertsList.innerHTML = alerts.map(alert => `
+                <div class="alert ${alert.category === 'missile' ? 'critical' : ''}">
+                    <b>⚠️ ${alert.city.toUpperCase()}</b><br>
+                    ${alert.category === 'missile' ? '🚀 MISSILE' : '🛸 DRONE'}: ${alert.type}<br>
+                    Distance: ${alert.distance}km ${alert.direction}<br>
+                    ${alert.distance < 50 ? '<b style="color: #f00;">IMMEDIATE THREAT</b>' : 'APPROACHING'}
+                </div>
+            `).join('');
+        }
+
+        function displayThreats(threats) {
+            const threatsList = document.getElementById('threatsList');
+
+            threatsList.innerHTML = threats.map(t => {
+                const timeAgo = Math.floor((Date.now() - new Date(t.timestamp)) / 60000);
+                return `
+                    <div class="threat-item ${t.category}">
+                        <b>${t.type}</b><br>
+                        ${t.speed} km/h | ${t.altitude}m | ${t.direction}<br>
+                        <small>${timeAgo}m ago</small>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function updateSystemTime() {
+            document.getElementById('systemTime').textContent =
+                new Date().toLocaleTimeString();
+        }
+
+        // Initialize
+        addAlertZones();
         loadData();
-        setInterval(loadData, 60000);
+        updateSystemTime();
+
+        // Auto-refresh every 10 seconds
+        setInterval(loadData, 10000);
+        setInterval(updateSystemTime, 1000);
     </script>
 </body>
 </html>
