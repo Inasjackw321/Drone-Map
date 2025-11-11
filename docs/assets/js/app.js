@@ -5,40 +5,23 @@ class DroneMap {
         this.markers = [];
         this.heatLayer = null;
         this.currentTimeFilter = 24;
-        this.apiEndpoint = this.getApiEndpoint();
         this.init();
-    }
-
-    getApiEndpoint() {
-        // If running locally with backend, use localhost
-        // If on GitHub Pages, use mock data
-        const hostname = window.location.hostname;
-        if (hostname === 'localhost' || hostname === '127.0.0.1') {
-            return 'http://localhost:5000/api';
-        }
-        // GitHub Pages - use mock data
-        return null;
     }
 
     async init() {
         this.initMap();
         this.attachEventListeners();
         await this.loadData();
-        // Refresh data every 5 minutes
         setInterval(() => this.loadData(), 300000);
     }
 
     initMap() {
-        // Initialize Leaflet map centered on Ukraine
         this.map = L.map('map').setView([50.4501, 30.5234], 6);
-
-        // Add OpenStreetMap tiles
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors',
             maxZoom: 18
         }).addTo(this.map);
 
-        // Add fullscreen handler
         document.getElementById('viewFullscreen').addEventListener('click', () => {
             const mapContainer = document.querySelector('.map-section');
             if (mapContainer.requestFullscreen) {
@@ -60,51 +43,15 @@ class DroneMap {
 
     async loadData() {
         this.showLoading(true);
-
-        try {
-            let data;
-            if (this.apiEndpoint) {
-                // Try to fetch from backend API
-                data = await this.fetchFromApi();
-            } else {
-                // Use mock data for GitHub Pages demo
-                data = this.getMockData();
-            }
-
-            this.updateStats(data.stats);
-            this.updateMap(data.sightings);
-            this.updateSightingsList(data.sightings);
-            this.updateLastUpdate();
-        } catch (error) {
-            console.error('Error loading data:', error);
-            // Fallback to mock data
-            const data = this.getMockData();
-            this.updateStats(data.stats);
-            this.updateMap(data.sightings);
-            this.updateSightingsList(data.sightings);
-            this.updateLastUpdate();
-        }
-
+        const data = this.getMockData();
+        this.updateStats(data.stats);
+        this.updateMap(data.sightings);
+        this.updateSightingsList(data.sightings);
+        this.updateLastUpdate();
         this.showLoading(false);
     }
 
-    async fetchFromApi() {
-        const [statsRes, sightingsRes] = await Promise.all([
-            fetch(`${this.apiEndpoint}/stats`),
-            fetch(`${this.apiEndpoint}/sightings/${this.currentTimeFilter}`)
-        ]);
-
-        const stats = await statsRes.json();
-        const sightingsData = await sightingsRes.json();
-
-        return {
-            stats: stats,
-            sightings: sightingsData.sightings
-        };
-    }
-
     getMockData() {
-        // Generate mock data for demonstration
         const droneTypes = ['Quadcopter', 'Shahed-136', 'Orlan-10', 'Bayraktar TB2', 'Commercial', 'Unknown'];
         const threatLevels = ['low', 'medium', 'high', 'critical'];
         const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
@@ -121,7 +68,7 @@ class DroneMap {
         ];
 
         const sightings = [];
-        const count = Math.floor(Math.random() * 20) + 30; // 30-50 sightings
+        const count = Math.floor(Math.random() * 20) + 30;
 
         for (let i = 0; i < count; i++) {
             const location = locations[Math.floor(Math.random() * locations.length)];
@@ -145,7 +92,6 @@ class DroneMap {
             });
         }
 
-        // Sort by timestamp (newest first)
         sightings.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
         const stats = {
@@ -169,7 +115,6 @@ class DroneMap {
     }
 
     updateMap(sightings) {
-        // Clear existing markers
         this.markers.forEach(marker => this.map.removeLayer(marker));
         this.markers = [];
 
@@ -181,10 +126,8 @@ class DroneMap {
             return;
         }
 
-        // Prepare data for heatmap
         const heatData = [];
 
-        // Add markers for each sighting
         sightings.forEach(sighting => {
             const color = this.getThreatColor(sighting.threat_level);
             const icon = L.divIcon({
@@ -196,7 +139,6 @@ class DroneMap {
             const marker = L.marker([sighting.latitude, sighting.longitude], { icon })
                 .addTo(this.map);
 
-            // Create popup
             const popupContent = `
                 <div style="min-width: 200px;">
                     <h4 style="margin-bottom: 8px; color: #667eea;">${sighting.drone_type || 'Unknown'}</h4>
@@ -212,12 +154,9 @@ class DroneMap {
 
             marker.bindPopup(popupContent);
             this.markers.push(marker);
-
-            // Add to heatmap data
             heatData.push([sighting.latitude, sighting.longitude, 0.5]);
         });
 
-        // Add heatmap layer
         if (heatData.length > 0) {
             this.heatLayer = L.heatLayer(heatData, {
                 radius: 25,
@@ -232,7 +171,6 @@ class DroneMap {
             }).addTo(this.map);
         }
 
-        // Fit map bounds to markers
         if (this.markers.length > 0) {
             const group = L.featureGroup(this.markers);
             this.map.fitBounds(group.getBounds().pad(0.1));
@@ -247,7 +185,6 @@ class DroneMap {
             return;
         }
 
-        // Show only the 10 most recent
         const recentSightings = sightings.slice(0, 10);
 
         listContainer.innerHTML = recentSightings.map(sighting => `
@@ -334,7 +271,6 @@ class DroneMap {
     }
 }
 
-// Initialize the app when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     new DroneMap();
 });

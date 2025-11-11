@@ -10,7 +10,6 @@
 </head>
 <body>
     <div class="container">
-        <!-- Header -->
         <header class="header">
             <div class="header-content">
                 <h1>🛰️ Drone Map</h1>
@@ -27,7 +26,6 @@
             </div>
         </header>
 
-        <!-- Stats Dashboard -->
         <section class="stats-grid" id="statsGrid">
             <div class="stat-card">
                 <div class="stat-icon">📊</div>
@@ -59,7 +57,6 @@
             </div>
         </section>
 
-        <!-- Map Container -->
         <section class="map-section">
             <div class="map-header">
                 <h2>📍 Live Drone Activity Map</h2>
@@ -89,7 +86,6 @@
             </div>
         </section>
 
-        <!-- Recent Sightings List -->
         <section class="sightings-section">
             <h2>📋 Recent Sightings</h2>
             <div id="sightingsList" class="sightings-list">
@@ -97,53 +93,17 @@
             </div>
         </section>
 
-        <!-- Telegram Bot Info -->
-        <section class="bot-info">
-            <h2>🤖 Connect via Telegram Bot</h2>
-            <p>Get real-time alerts and interactive tracking directly in Telegram:</p>
-            <div class="bot-commands">
-                <div class="command-item">
-                    <code>/start</code>
-                    <span>Get started with the bot</span>
-                </div>
-                <div class="command-item">
-                    <code>/track</code>
-                    <span>View recent drone sightings</span>
-                </div>
-                <div class="command-item">
-                    <code>/map</code>
-                    <span>Generate interactive map</span>
-                </div>
-                <div class="command-item">
-                    <code>/subscribe</code>
-                    <span>Get real-time alerts</span>
-                </div>
-                <div class="command-item">
-                    <code>/stats</code>
-                    <span>View statistics</span>
-                </div>
-                <div class="command-item">
-                    <code>/report</code>
-                    <span>Report a drone sighting</span>
-                </div>
-            </div>
-        </section>
-
-        <!-- Footer -->
         <footer class="footer">
             <p>Last updated: <span id="lastUpdate">-</span></p>
-            <p>Data updates every 5 minutes | <a href="https://github.com/Inasjackw321/Drone-Map" target="_blank">View on GitHub</a></p>
-            <p class="disclaimer">⚠️ This is a tracking and monitoring tool. Always verify information from official sources.</p>
+            <p>Data updates every 5 minutes</p>
         </footer>
     </div>
 
-    <!-- Loading Overlay -->
     <div id="loadingOverlay" class="loading-overlay" style="display: none;">
         <div class="spinner"></div>
         <p>Loading data...</p>
     </div>
 
-    <!-- Scripts -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
     <script src="assets/js/app.js"></script>
