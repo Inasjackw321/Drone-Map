@@ -1,46 +1,66 @@
 # Drone Tracker
 
-Live map showing drone locations scraped from Telegram.
+Live map showing drone locations from Telegram channel @kpszsu.
 
 ## Live Map
 
 https://inasjackw321.github.io/Drone-Map/
 
-## Auto-Scrape from Telegram
+## Setup
 
-Scrapes drone data from https://t.me/kpszsu
+### 1. Get Telegram API Credentials
 
-### Setup
+1. Go to https://my.telegram.org/apps
+2. Create app
+3. Get API_ID and API_HASH
 
-1. Get Telegram API credentials:
-   - Go to https://my.telegram.org/apps
-   - Create app, get API_ID and API_HASH
+### 2. Install Dependencies
 
-2. Set environment variables:
 ```bash
-export TELEGRAM_API_ID=your_api_id
-export TELEGRAM_API_HASH=your_api_hash
+pip install -r scraper-requirements.txt
 ```
 
-3. Run scraper:
+### 3. Run Scraper
+
 ```bash
-pip install -r requirements.txt
-python scraper.py
+python telegram-scraper.py
 ```
 
-Scraper extracts coordinates and drone info, auto-commits to GitHub.
+Follow prompts:
+- Enter API_ID and API_HASH
+- Choose QR code login (recommended)
+- Add channel: `kpszsu`
+- Select option [S] to scrape
 
-### Run continuously:
+### 4. Process Data
+
 ```bash
-while true; do python scraper.py; sleep 300; done
+python process_scraped_data.py kpszsu
 ```
 
-## Manual Reporting (Optional)
+This extracts coordinates from messages and updates the map.
 
-Set up bot for manual reports:
+### 5. Auto-run (Optional)
+
 ```bash
-export TELEGRAM_BOT_TOKEN=your_token
-python telegram_bot.py
+while true; do
+    python telegram-scraper.py
+    python process_scraped_data.py kpszsu
+    sleep 300
+done
 ```
 
-Report: `/report 50.45 30.52 Drone`
+## Files
+
+- `telegram-scraper.py` - Main scraper (from unnohwn/telegram-scraper)
+- `process_scraped_data.py` - Extracts drone coordinates from scraped messages
+- `drone_data.json` - Drone locations data
+- `docs/` - GitHub Pages site
+
+## How It Works
+
+1. Scraper downloads messages from @kpszsu channel
+2. Processor extracts coordinates from messages
+3. Updates drone_data.json
+4. Auto-commits to GitHub
+5. GitHub Pages displays updated map
