@@ -1,15 +1,46 @@
 # Drone Tracker
 
-Map showing drone locations. Report via Telegram.
+Live map showing drone locations scraped from Telegram.
 
 ## Live Map
 
 https://inasjackw321.github.io/Drone-Map/
 
-## Setup
+## Auto-Scrape from Telegram
 
-1. Create bot: @BotFather on Telegram
-2. Run: `export TELEGRAM_BOT_TOKEN=your_token && python telegram_bot.py`
-3. Report: `/report 50.45 30.52 Drone`
+Scrapes drone data from https://t.me/kpszsu
 
-Data auto-syncs to GitHub. Map updates every minute.
+### Setup
+
+1. Get Telegram API credentials:
+   - Go to https://my.telegram.org/apps
+   - Create app, get API_ID and API_HASH
+
+2. Set environment variables:
+```bash
+export TELEGRAM_API_ID=your_api_id
+export TELEGRAM_API_HASH=your_api_hash
+```
+
+3. Run scraper:
+```bash
+pip install -r requirements.txt
+python scraper.py
+```
+
+Scraper extracts coordinates and drone info, auto-commits to GitHub.
+
+### Run continuously:
+```bash
+while true; do python scraper.py; sleep 300; done
+```
+
+## Manual Reporting (Optional)
+
+Set up bot for manual reports:
+```bash
+export TELEGRAM_BOT_TOKEN=your_token
+python telegram_bot.py
+```
+
+Report: `/report 50.45 30.52 Drone`
