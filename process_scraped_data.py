@@ -56,32 +56,49 @@ def extract_coords(text):
                 return lat, lon
     return None, None
 
-def extract_drone_type(text):
-    """Extract drone type from text"""
+def extract_threat_info(text):
+    """Extract threat type, category, and details from text"""
     text_lower = text.lower()
 
-    types = {
-        'shahed': 'Shahed-136',
-        'шахед': 'Shahed-136',
-        'geran': 'Geran-2',
-        'герань': 'Geran-2',
-        'orlan': 'Orlan-10',
-        'орлан': 'Orlan-10',
-        'lancet': 'Lancet',
-        'ланцет': 'Lancet',
-        'бпла': 'UAV',
-        'uav': 'UAV',
-        'дрон': 'Drone',
-        'drone': 'Drone',
-        'безпілотник': 'UAV',
-        'бп': 'UAV'
+    # Drone types
+    drone_types = {
+        'shahed': ('Shahed-136', 'drone', 185, 300, 'medium'),
+        'шахед': ('Shahed-136', 'drone', 185, 300, 'medium'),
+        'geran': ('Geran-2', 'drone', 185, 300, 'medium'),
+        'герань': ('Geran-2', 'drone', 185, 300, 'medium'),
+        'orlan': ('Orlan-10', 'drone', 150, 5000, 'medium'),
+        'орлан': ('Orlan-10', 'drone', 150, 5000, 'medium'),
+        'lancet': ('Lancet', 'drone', 110, 500, 'medium'),
+        'ланцет': ('Lancet', 'drone', 110, 500, 'medium'),
     }
 
-    for key, value in types.items():
-        if key in text_lower:
-            return value
+    # Missile types
+    missile_types = {
+        'kalibr': ('Kalibr Missile', 'missile', 900, 10000, 'high'),
+        'калібр': ('Kalibr Missile', 'missile', 900, 10000, 'high'),
+        'iskander': ('Iskander Missile', 'missile', 2100, 50000, 'high'),
+        'іскандер': ('Iskander Missile', 'missile', 2100, 50000, 'high'),
+        'kh-101': ('Kh-101 Missile', 'missile', 1000, 6000, 'high'),
+        'х-101': ('Kh-101 Missile', 'missile', 1000, 6000, 'high'),
+        'kh-47': ('Kh-47 Kinzhal', 'missile', 4900, 20000, 'high'),
+        'х-47': ('Kh-47 Kinzhal', 'missile', 4900, 20000, 'high'),
+        'kinzhal': ('Kh-47 Kinzhal', 'missile', 4900, 20000, 'high'),
+        'кинжал': ('Kh-47 Kinzhal', 'missile', 4900, 20000, 'high'),
+        'rocket': ('Missile', 'missile', 900, 10000, 'high'),
+        'ракета': ('Missile', 'missile', 900, 10000, 'high'),
+    }
 
-    return 'UAV'
+    all_types = {**drone_types, **missile_types}
+
+    for key, (name, category, speed, altitude, threat) in all_types.items():
+        if key in text_lower:
+            return name, category, speed, altitude, threat
+
+    # Default to drone if generic UAV terms found
+    if any(term in text_lower for term in ['бпла', 'uav', 'дрон', 'drone', 'безпілотник', 'бп']):
+        return 'UAV', 'drone', 150, 1000, 'medium'
+
+    return None, None, None, None, None
 
 def process_channel_data(channel_name):
     """Process scraped data from channel database"""
@@ -117,15 +134,34 @@ def process_channel_data(channel_name):
         lat, lon = extract_coords(text)
 
         if lat and lon:
-            drone_type = extract_drone_type(text)
+            threat_name, category, speed, altitude, threat_level = extract_threat_info(text)
+
+            # Skip if we can't identify the threat type
+            if not threat_name:
+                continue
+
+            # Extract direction if present
+            directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
+            direction = 'Unknown'
+            for d in directions:
+                if d.lower() in text.lower():
+                    direction = d
+                    break
 
             data['sightings'].append({
+                'id': len(data['sightings']) + 1,
                 'lat': lat,
                 'lon': lon,
-                'type': drone_type,
-                'description': text[:200],
+                'type': threat_name,
+                'category': category,
+                'speed': speed,
+                'altitude': altitude,
+                'direction': direction,
                 'timestamp': date,
+                'description': text[:200],
                 'reporter': 'telegram_scraper',
+                'active': True,
+                'threat_level': threat_level,
                 'msg_id': msg_id,
                 'channel': channel_name
             })
