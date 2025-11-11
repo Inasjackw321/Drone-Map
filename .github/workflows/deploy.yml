@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - master
+      - claude/connect-th-011CV1rP4pSCsJfhq5XoR6yw
   workflow_dispatch:
 
 permissions:
