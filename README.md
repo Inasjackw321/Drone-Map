@@ -1,30 +1,38 @@
-# 🛰️ Drone Map - Europe & Ukraine Tracker
+# 🛰️ Drone Tracker
 
-Real-time drone tracking system for Europe and Ukraine.
+Live drone tracking system. Report via Telegram, view on map.
 
 ## Live Site
 
 **https://inasjackw321.github.io/Drone-Map/**
 
-## Features
+## Setup Telegram Bot
 
-- Interactive Leaflet map with drone tracking
-- Real-time statistics dashboard
-- Heatmap visualization
-- Threat level indicators (low, medium, high, critical)
-- Recent sightings list
-- Responsive design
-- Auto-refresh every 5 minutes
+1. Create bot with @BotFather on Telegram
+2. Get bot token
+3. Set environment variable:
+```bash
+export TELEGRAM_BOT_TOKEN=your_token_here
+```
 
-## GitHub Pages Setup
+4. Run bot:
+```bash
+pip install python-telegram-bot
+python telegram_bot.py
+```
 
-1. Go to repository Settings → Pages
-2. Set source to "GitHub Actions"
-3. Site deploys automatically on push
+## Report Drones
 
-## Tech Stack
+In Telegram, send:
+```
+/report 50.45 30.52 Quadcopter Spotted near city
+```
 
-- HTML/CSS/JavaScript
-- Leaflet.js for maps
-- Leaflet.heat for heatmaps
-- GitHub Pages for hosting
+Format: `/report <latitude> <longitude> <type> <description>`
+
+## How It Works
+
+1. Users report drones via Telegram bot
+2. Bot saves to `drone_data.json`
+3. Bot commits and pushes to GitHub
+4. Website auto-updates from GitHub
