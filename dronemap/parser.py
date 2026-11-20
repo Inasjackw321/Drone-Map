@@ -8,7 +8,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from .gazetteer import GAZETTEER, Place, destination
+from .gazetteer import GAZETTEER, NEIGHBORS, Place, destination
+from .settlements import SETTLEMENTS
 
 # --------------------------------------------------------------------------- threats
 
@@ -42,7 +43,7 @@ THREAT_PATTERNS: list[tuple[str, re.Pattern]] = [(k, re.compile(p)) for k, p in 
             r"керован\w*\s+(?:авіа)?бомб\w*|управляем\w*\s+(?:авиа)?бомб\w*|фаб-?\d+)"),
     ("jet_shahed", _W + r"(?:реактивн\w*\s+(?:шахед\w*|шахід\w*|герань|герані|бпла|дрон\w*|безпілот\w*|беспилот\w*)|"
                    r"шахед-?238|герань-?3|geran-?3|shahed-?238|"
-                   r"реактив(?:н\w*)?(?!\s+(?:систем\w*|артилер\w*|снаряд\w*|залп\w*|літак\w*|самол\w*)))|🏍"),
+                   r"реактив\w*(?!\w)(?!\s+(?:систем\w*|артилер\w*|снаряд\w*|залп\w*|літак\w*|самол\w*)))|🏍"),
     ("gerbera", _W + r"(?:гербер\w*|gerbera|імітатор\w*|имитатор\w*|дрон\w*-приман\w*|приманк\w*)"),
     ("lancet", _W + r"(?:ланцет\w*|lancet)"),
     ("molniya", _W + r"(?:молні[яїюєй]\w*|молни[яиюей]\w*|блискавк\w*|molniya)"),
@@ -71,6 +72,10 @@ TAKEOFF_RE = re.compile(_W + r"(?:зліт|злет|зльот|піднят\w*|�
 SUMMARY_RE = re.compile(r"(?:у|в)\s+ніч\s+на\s+\d|станом\s+на\s+\d|протягом\s+(?:доби|ночі)|за\s+(?:минулу\s+)?добу|"
                         r"в\s+ночь\s+на\s+\d|за\s+сутки|загалом\s+(?:збито|знешкоджено)|всього\s+(?:збито|знешкоджено)|"
                         r"результати\s+(?:роботи|відбиття)|вчора\b")
+NEWS_RE = re.compile(_W + r"(?:внаслідок|постраждал\w*|загибл\w*|загинул\w*|поранен\w*|пошкоджен\w*|зруйнован\w*|"
+                     r"дснс|рятувальник\w*|наслідк\w*|травмован\w*|госпіталізован\w*|пострадав\w*|погиб\w*|"
+                     r"поврежден\w*|разрушен\w*|последстви\w*|спасател\w*|постраждалих|жертв\w*)")
+PATH_CUE = re.compile(_W + r"(?:повз|через|минає|минули|пролітає\w*|пролетів|пролетіли|проходить|прошел|прошли|мимо|вздовж|уздовж)")
 SPAM_RE = re.compile(r"підпис|подпис|реклам|донат|задонат|монобанк|https?://|t\.me/|@\w{4,}|розіграш|розыгрыш")
 MOVE_CUE_RE = re.compile(_W + r"(?:курс\w*|напрям\w*|направлен\w*|над|повз|через|районі|районе|рухає\w*|летить|летять|"
                          r"летит|летят|бік|сторону|підльот\w*|подлет\w*)|→|➡")
@@ -285,8 +290,8 @@ def extract_count(seg: str, threat_spans: list[tuple[str, int, int]]) -> tuple[i
                 count = int(ma.group("a") or ma.group("b") or ma.group("c"))
         if count:
             break
-    if count is not None and not (1 <= count <= 150):
-        count = None
+    if count is not None and not (1 <= count <= 30):
+        count = None                                  # larger numbers are nightly totals, not one group
     group = bool(GROUP_RE.search(seg))
     return count, group
 
@@ -345,31 +350,64 @@ def classify_place(seg: str, start: int, end: int, place: Place, prev_end: int |
     return PlaceRef(place, role, lat, lon, precision, label, start), explicit
 
 
-def locate(seg: str, prefer_oblasts) -> list[PlaceRef]:
-    """Find places in a segment and work out what each one means (current position, destination, origin)."""
+ROUTE_AFTER = re.compile(r"^\s*(?:→|➡️?|->|=>|—>|–>|>>|-|–|—)\s*\S")
+CAPS_RE = re.compile(r"[A-ZА-ЯІЇЄҐЁ][\w'’ʼ`]*(?:-[\w'’ʼ`]+)*")
+
+
+def locate(seg: str, prefer_oblasts, village_prefer=(), caps: set[str] | None = None,
+           nationwide: bool = False) -> list[PlaceRef]:
+    """Find places in a segment and work out what each one means (current position, destination, origin).
+
+    Curated gazetteer places are always used; villages from the GeoNames index only when the
+    context makes clear they are places (see settlements.py).
+    """
+    matches: list[tuple[int, int, Place, bool]] = []      # start, end, place, is_village
+    for m in GAZETTEER.find(seg):
+        matches.append((m.start, m.end, GAZETTEER.resolve(m, prefer_oblasts), False))
+    if SETTLEMENTS.loaded and caps is not None:
+        taken = [(a, b) for a, b, _, _ in matches]
+        neighbors = [n for o in village_prefer for n in NEIGHBORS.get(o, []) if n not in village_prefer]
+        for vm in SETTLEMENTS.find(seg, taken):
+            first = re.match(r"[\w'-]+", seg[vm.start:vm.end]).group(0)
+            if first not in caps:
+                continue
+            st = SETTLEMENTS.resolve(vm, list(village_prefer), nationwide, neighbors)
+            if st is not None:
+                matches.append((vm.start, vm.end, st.place(), True))
+    matches.sort(key=lambda x: x[0])
+
     refs: list[PlaceRef] = []
     ends: list[int] = []
-    for m in GAZETTEER.find(seg):
-        place = GAZETTEER.resolve(m, prefer_oblasts)
+    for start, end, place, is_village in matches:
         prev = refs[-1] if refs else None
         prev_end = ends[-1] if ends else None
-        ref, explicit = classify_place(seg, m.start, m.end, place, prev_end)
-        gap = seg[prev_end:m.start] if prev_end is not None else seg[:m.start]
+        ref, explicit = classify_place(seg, start, end, place, prev_end)
+        gap = seg[prev_end:start] if prev_end is not None else seg[:start]
         if prev is not None and PAREN_GAP.match(gap):
             # "Ізюм (Харківська обл.)" / "на північ Франківщини (Бурштин)": one place, keep the precise one
             keep = ref if ref.precision == "point" and prev.precision != "point" else prev
             keep.role = prev.role
             refs[-1] = keep
-            ends[-1] = m.end
+            ends[-1] = end
             continue
+        sep = prev is not None and SEP_GAP.match(gap)
+        if is_village and not (explicit or sep or ROUTE_AFTER.match(seg[end:end + 4])
+                               or _after_threat_word(seg[:start])):
+            continue                                    # a capitalised word that merely looks like a village
         if not explicit:
-            if prev is not None and SEP_GAP.match(gap):
+            if sep:
                 ref.role = prev.role                        # "на Царичанку/Кобеляки", "повз Ромни, Лебедин"
             elif LOOKBACK_DEST.search(gap):
                 ref.role = "dest"                           # "курсом на Коломак/Чутове" with Коломак unknown
         refs.append(ref)
-        ends.append(m.end)
+        ends.append(end)
     return refs
+
+
+def _after_threat_word(prefix: str) -> bool:
+    """'ракета Бандурове на Бурти': a place name right after the threat word."""
+    tail = prefix[-30:]
+    return any(e >= len(tail) - 1 for _, _, e in find_threats(tail))
 
 
 def _ukr(oblast: str) -> bool:
@@ -390,7 +428,12 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
         return res
 
     segments = split_segments(norm)
-    seg_refs = {i: locate(seg, prefer_oblasts) for i, seg in enumerate(segments)}
+    # regions named anywhere in the message help resolve village names ("на Харківщині ... на Савинці")
+    named = [GAZETTEER.resolve(m, prefer_oblasts).oblast for seg in segments for m in GAZETTEER.find(seg)]
+    village_prefer = list(dict.fromkeys(list(prefer_oblasts) + [o for o in named if not o.startswith(("ru_", "sea"))]))
+    caps = {normalize(w).strip("-") for w in CAPS_RE.findall(text)}
+    seg_refs = {i: locate(seg, prefer_oblasts, village_prefer, caps, nationwide=not prefer_oblasts)
+                for i, seg in enumerate(segments)}
     msg_threat_list: list[str] = []
     for seg in segments:
         msg_threat_list += [t for t, _, _ in find_threats(seg)]
@@ -432,10 +475,13 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
 
     inherited: list[str] = msg_threats[:1] if len(msg_threats) == 1 else []
     pending_banners: list[tuple[str, str]] = []
+    is_news = bool(NEWS_RE.search(norm))            # aftermath / news report: feed only, nothing live to plot
 
     for i, seg in enumerate(segments):
         if SPAM_RE.search(seg) and not find_threats(seg):
             continue
+        if len(seg) > 220:
+            continue                                  # prose / commentary, not a live report line
         tspans = find_threats(seg)
         seg_threats = best_by_family([t for t, _, _ in tspans])
         if seg_threats:
@@ -484,6 +530,8 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
         dests = [r for r in refs if r.role == "dest"]
         origins = [r for r in refs if r.role == "origin"]
 
+        if is_news and not is_expl:
+            continue
         # ---- shot down / explosions
         if is_kill:
             count, _ = extract_count(seg, tspans)
@@ -497,7 +545,7 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
             for r in (current or refs):
                 if _ukr(r.place.oblast):
                     res.events.append(AreaEvent("explosion", threats_here[0] if threats_here else None, r, None, seg))
-            if not dests:
+            if not dests or is_news:
                 continue
 
         if is_threat_area and not (current and has_move_cue and not is_possible) and not dests:
@@ -533,10 +581,20 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
         point_current = [r for r in current if r.precision == "point"]
         dest = dests[0] if dests else None
         origin = origins[0] if origins else None
+        if not current and not dest and origin is not None and not _ukr(origin.place.oblast):
+            pending_banners.append(("threat:" + threats_here[0], seg))     # launch notice, no target yet
+            continue
 
         # several regions in one line ("ракети на Сумщині та Харківщині") are separate groups
         if not point_current and len(current) > 1:
             for r in current:
+                for th in threats_here:
+                    res.sightings.append(Sighting(th, count, group, r, [], dest, origin, heading, seg, bool(seg_threats)))
+            continue
+
+        # a bare list of towns is several targets; "повз A, B" is one target's path
+        if len(point_current) > 1 and not PATH_CUE.search(seg):
+            for r in point_current:
                 for th in threats_here:
                     res.sightings.append(Sighting(th, count, group, r, [], dest, origin, heading, seg, bool(seg_threats)))
             continue

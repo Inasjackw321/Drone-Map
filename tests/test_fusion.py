@@ -151,3 +151,20 @@ def test_demo_scenario_end_to_end():
     assert any(not t["confirmed"] for t in snap["tracks"])     # the aggregator-only report
     assert any(e["kind"] == "explosion" for e in snap["events"])
     assert snap["alerts"] and snap["banners"]
+
+
+def test_terse_follow_up_continues_channel_report():
+    CH["monitoring_kyiv"] = {"tier": "regional", "regions": ["kyiv", "kyiv_city"]}
+    snap = fuse([(0, "monitoring_kyiv", "🚀 Крилата ракета над Димером"),
+                 (2, "monitoring_kyiv", "Гостомель")], 3)
+    assert len(snap["tracks"]) == 1 and places(snap["tracks"][0]) == ["Dymer", "Hostomel"]
+
+
+def test_clear_report_ends_nearby_track():
+    snap = fuse([(0, "PoltavaRadar", "Шахед над Кременчуком"), (5, "PoltavaRadar", "Кременчук чисто")], 6)
+    assert snap["tracks"][0]["ended"] == "reported clear"
+
+
+def test_generic_missile_does_not_ride_ballistic_speed():
+    snap = fuse([(0, "kpszsu", "Балістика на Київ"), (3, "kpszsu", "Ракета над Львовом")], 4)
+    assert len(snap["tracks"]) == 2

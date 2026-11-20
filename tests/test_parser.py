@@ -184,3 +184,101 @@ def test_spam_line_ignored():
 
 def test_unrelated_text():
     assert not parse_message("Доброго ранку, Полтава! Гарного дня").relevant
+
+
+# ------------------------------------------------------------------ patterns seen in real channel posts
+
+def test_alert_system_district_list():
+    r = parse_message("🔴 Червоний рівень тривоги\n• Конотопський район (Сумська обл.)\n• Шосткинський район (Сумська обл.)")
+    assert r.alerts_on == {"sumy"}
+    r = parse_message("🟢 Відбій тривоги\n• Луцький район (Волинська обл.)\n• Ковельський район (Волинська обл.)")
+    assert r.alerts_off == {"volyn"}
+    # red level lifted, yellow remains: the alert stays on
+    assert not parse_message("🟡 Відбій червоної тривоги\n• Полтавський район (Полтавська обл.)").alerts_off
+
+
+def test_regional_alert_without_known_place_uses_channel_region():
+    assert parse_message("🔴 Сумський район — повітряна тривога, червоний рівень", ("sumy",)).alerts_on == {"sumy"}
+    assert parse_message("🟡 Повітряна тривога в Подільському районі!", ("odesa",)).alerts_on == {"odesa"}
+
+
+def test_alert_system_threat_notice_is_area_not_target():
+    r = parse_message("🛸 Ізюм (Харківська обл.)\nЗагроза застосування БПЛА. Перейдіть в укриття!", (), "official")
+    assert not r.sightings
+    assert [(e.kind, e.place.place.key) for e in r.events] == [("threat", "izium")]
+
+
+def test_parenthesis_clarifies_destination():
+    s = one("🚀Ракети з Тернопільщини на північ Івано-Франківщини (Бурштин)", (), "official")
+    assert label(s.origin) == "obl_ternopil" and label(s.dest) == "burshtyn"
+
+
+def test_slash_alternatives_share_role():
+    r = parse_message("❗️ 2 групи крилатих ракет повз Машівку на Царичанку/Кобеляки.", ("poltava",))
+    s = r.sightings[0]
+    assert s.threat == "cruise" and s.count == 2 and label(s.pos) == "mashivka" and label(s.dest) == "tsarychanka"
+
+
+def test_jet_drone_slang_and_emoji():
+    assert one("🏍 Реактивний БпЛА на Івано-Франківськ з півдня", (), "official").threat == "jet_shahed"
+    assert one("Реактив в сторону Теплодара", ("odesa",)).threat == "jet_shahed"
+    assert one("3 Реактивних курс Мерефа", ("kharkiv",)).threat == "jet_shahed"
+    assert not parse_message("Реактивні системи залпового вогню обстріляли Херсон").sightings
+
+
+def test_village_from_geonames_in_channel_region():
+    s = one("+1 Шахед курсом на Савинці", ("kharkiv",))
+    assert s.dest.place.name == "Savyntsi" and s.dest.place.oblast == "kharkiv"
+    s = one("Р. Шахед курсом на Безлюдовку", ("kharkiv",))      # Russian spelling
+    assert s.dest.place.name == "Bezliudivka"
+    s = one("ракета через Лисичу Балку на Петраківку", ("cherkasy",))
+    assert s.pos.place.name == "Lysycha Balka" and s.dest.place.name == "Petrakivka"
+
+
+def test_village_needs_capital_and_context():
+    # lower-case common word that is also a village name somewhere
+    assert not parse_message("шахед курсом на мирне", ("kharkiv",)).sightings
+    # a village name with no location word in front is not trusted
+    r = parse_message("Шахед. Савинці відпочивають", ("kharkiv",))
+    assert all(s.pos is None or s.pos.place.kind != "V" for s in r.sightings)
+
+
+def test_kamianets_genitive_and_spaced_hyphen():
+    s = one("Ракети в районі Камʼянця Подільського")
+    assert label(s.pos) == "kamianets_podilskyi"
+    s = one("🚀 Ракета повз Камʼянець - Подільський")
+    assert label(s.pos) == "kamianets_podilskyi"
+
+
+def test_news_aftermath_is_not_a_live_target():
+    r = parse_message("Внаслідок атаки росіян ракетами зранку по Сумах, постраждалих та загиблих немає.", ("sumy",))
+    assert not r.sightings and not r.events
+
+
+def test_list_of_towns_is_several_targets_but_povz_is_a_path():
+    r = parse_message("Балістика на Київ. Ракети: Суми, Полтава")
+    assert {label(s.pos) for s in r.sightings if s.pos} == {"sumy", "poltava"}
+    s = one("Шахеди повз Ромни, Недригайлів, курс на Лебедин")
+    assert [label(v) for v in s.via] == ["romny"]
+
+
+def test_launch_notice_from_russia_is_not_a_track():
+    r = parse_message("Балістика з Брянська", (), "official")
+    assert not r.sightings and r.banners
+
+
+def test_clear_report():
+    r = parse_message("Кременчук поки чисто.", ("poltava",))
+    assert [p.place.key for p in r.clear_places] == ["kremenchuk"]
+    assert parse_message("В області чисто.", ("poltava",)).clear_oblasts == {"poltava"}
+
+
+def test_huge_count_is_a_total_not_a_group():
+    assert one("До 50 крилатих ракет над Житомирщиною").count is None
+
+
+def test_long_commentary_is_ignored():
+    text = ("сразу быстро напишу вам мысли: это явно не был самый масштабный обстрел, как там пугали некоторые, "
+            "ракеты летели на Киев, Львов и Хмельницкий, но большая часть была сбита, и это хорошая новость для всех нас, "
+            "держитесь")
+    assert not parse_message(text).sightings

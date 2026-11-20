@@ -13,7 +13,9 @@ from .gazetteer import GAZETTEER, OBLAST_NAMES, angle_diff, bearing, haversine
 from .parser import THREATS, AreaEvent, ParsedMessage, PlaceRef, Sighting  # noqa: F401
 
 # How long after the last report a new report can still continue the same track (minutes)
-ASSOC_WINDOW = {"drone": 50, "missile": 25, "kab": 10, "ballistic": 8, "kinzhal": 8, "jet_shahed": 30}
+ASSOC_WINDOW = {"drone": 50, "missile": 15, "kab": 10, "ballistic": 6, "kinzhal": 6, "jet_shahed": 30}
+# speed used for gating; ballistic reports never chain far, so they are not gated at their physical speed
+GATE_SPEED = {"ballistic": 1200, "kinzhal": 1200}
 # A track turns "stale" (faded on the map) after this many minutes without reports
 STALE_AFTER = {"drone": 30, "missile": 15, "kab": 8, "ballistic": 6, "kinzhal": 6, "recon": 40,
                "lancet": 25, "fpv": 15, "molniya": 20, "jet_shahed": 20}
@@ -132,7 +134,7 @@ class Track:
         if last.precision == "inbound" and p.precision != "inbound":
             self.points[-1] = p          # replace a guessed position with a real one
             return
-        if p.precision == "region" and last.precision == "point" and \
+        if p.precision in ("region", "origin") and last.precision == "point" and \
                 haversine(last.lat, last.lon, p.lat, p.lon) < 130:
             return                        # coarse report refreshes the track but does not move it back
         if haversine(last.lat, last.lon, p.lat, p.lon) < 3:
@@ -183,24 +185,31 @@ class Fusion:
             return None                        # never seen yet: do not guess across drone types
         dt_h = max(0.0, ts - t.last_ts) / 3600
         d = haversine(last.lat, last.lon, pos.lat, pos.lon)
-        speed = max(THREATS[t.threat]["speed"], THREATS[s.threat]["speed"])
+        sp = lambda k: GATE_SPEED.get(k, THREATS[k]["speed"])  # noqa: E731
+        # a generic report ("ракета") cannot borrow the speed of a more specific track (ballistic)
+        speed = min(sp(t.threat), sp(s.threat)) if comp else sp(t.threat)
         coarse = pos.precision != "point" or last.precision != "point"
+        missile = t.family == "missile"
         if last.precision == "origin":
             slack = 160                        # "from Kursk region" = somewhere along a long border
         elif coarse:
             slack = 90
         else:
-            slack = 60 if t.family == "missile" else 30   # missile reports lag behind the missile
-        allowed = speed * dt_h * 1.3 + slack
+            slack = 40 if missile else 30     # missile reports lag behind the missile
+        allowed = speed * dt_h * (1.15 if missile else 1.3) + slack
         if d > allowed:
             return None
         cost = d / allowed + comp
         hdg = t.heading_estimate()
         if hdg is not None and d > 25 and not coarse:
             ang = angle_diff(hdg, bearing(last.lat, last.lon, pos.lat, pos.lon))
-            if ang > 120:
+            if ang > (95 if missile else 120):
                 return None
             cost += ang / 240
+        if s.dest is not None and hdg is not None and missile and not coarse:
+            # a missile group reported heading somewhere else is a different group
+            if angle_diff(hdg, bearing(pos.lat, pos.lon, s.dest.lat, s.dest.lon)) > 100:
+                return None
         if t.dest is not None and haversine(pos.lat, pos.lon, t.dest.lat, t.dest.lon) < 30:
             cost -= 0.3
         if s.dest is not None and t.dest is not None and haversine(s.dest.lat, s.dest.lon, t.dest.lat, t.dest.lon) < 30:

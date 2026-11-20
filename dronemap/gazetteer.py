@@ -396,7 +396,7 @@ zhytomyr; brusyliv; Brusyliv; 50.284; 29.521; T; брусилів,брусило
 zhytomyr; khoroshiv; Khoroshiv; 50.598; 28.460; T; хорошів,хорошева,хорошеві
 # ---------------------------------------------------------------- Khmelnytskyi region
 khmelnytskyi; khmelnytskyi; Khmelnytskyi; 49.422; 26.987; C; хмельницьк~,хмельницк~
-khmelnytskyi; kamianets_podilskyi; Kamianets-Podilskyi; 48.678; 26.585; T; /кам'?ян[еє]ц\w*-?\s?поділ\w*,/каменец\w*-?\s?подол\w*
+khmelnytskyi; kamianets_podilskyi; Kamianets-Podilskyi; 48.678; 26.585; T; /кам'?ян[еє]?ц\w*\s*-?\s*поділ\w*,/каменец\w*-?\s?подол\w*
 khmelnytskyi; shepetivka; Shepetivka; 50.183; 27.063; T; шепетівк~,шепетівц~,шепетовк~
 khmelnytskyi; starokostiantyniv; Starokostiantyniv; 49.756; 27.208; T; старокостянтинів,старокостянтинов~,староконстантинов~
 khmelnytskyi; netishyn; Netishyn; 50.340; 26.640; T; нетішин~,хаес
@@ -561,7 +561,7 @@ ru_other; caspian; Caspian Sea; 45.000; 49.000; F; каспі~,каспи~
 ru_other; belarus; Belarus; 51.900; 28.000; F; білорус~,беларус~,бєларус~
 """
 
-KIND_PROMINENCE = {"C": 3, "T": 2, "D": 2, "F": 2, "R": 1, "W": 1}
+KIND_PROMINENCE = {"C": 3, "T": 2, "D": 2, "F": 2, "R": 1, "W": 1, "V": 1}
 
 OBLAST_NAMES = {
     "vinnytsia": "Vinnytsia", "volyn": "Volyn", "dnipro": "Dnipropetrovsk", "donetsk": "Donetsk",
@@ -574,6 +574,35 @@ OBLAST_NAMES = {
 }
 
 UKRAINE_OBLASTS = set(OBLAST_NAMES)
+
+NEIGHBORS = {
+    "vinnytsia": ["zhytomyr", "kyiv", "cherkasy", "kirovohrad", "odesa", "khmelnytskyi", "chernivtsi"],
+    "volyn": ["rivne", "lviv"],
+    "dnipro": ["kharkiv", "donetsk", "zaporizhzhia", "kherson", "mykolaiv", "kirovohrad", "poltava"],
+    "donetsk": ["luhansk", "kharkiv", "dnipro", "zaporizhzhia"],
+    "zhytomyr": ["kyiv", "vinnytsia", "khmelnytskyi", "rivne"],
+    "zakarpattia": ["lviv", "ivano_frankivsk"],
+    "zaporizhzhia": ["dnipro", "donetsk", "kherson"],
+    "ivano_frankivsk": ["lviv", "ternopil", "chernivtsi", "zakarpattia"],
+    "kyiv": ["kyiv_city", "chernihiv", "poltava", "cherkasy", "vinnytsia", "zhytomyr"],
+    "kyiv_city": ["kyiv"],
+    "kirovohrad": ["cherkasy", "poltava", "dnipro", "mykolaiv", "odesa", "vinnytsia"],
+    "luhansk": ["donetsk", "kharkiv"],
+    "lviv": ["volyn", "rivne", "ternopil", "ivano_frankivsk", "zakarpattia"],
+    "mykolaiv": ["odesa", "kirovohrad", "dnipro", "kherson"],
+    "odesa": ["mykolaiv", "kirovohrad", "vinnytsia"],
+    "poltava": ["kyiv", "chernihiv", "sumy", "kharkiv", "dnipro", "kirovohrad", "cherkasy"],
+    "rivne": ["volyn", "lviv", "ternopil", "khmelnytskyi", "zhytomyr"],
+    "sumy": ["chernihiv", "poltava", "kharkiv"],
+    "ternopil": ["lviv", "rivne", "khmelnytskyi", "chernivtsi", "ivano_frankivsk"],
+    "kharkiv": ["sumy", "poltava", "dnipro", "donetsk", "luhansk"],
+    "kherson": ["mykolaiv", "dnipro", "zaporizhzhia", "crimea"],
+    "khmelnytskyi": ["rivne", "zhytomyr", "vinnytsia", "chernivtsi", "ternopil"],
+    "cherkasy": ["kyiv", "poltava", "kirovohrad", "vinnytsia"],
+    "chernivtsi": ["ivano_frankivsk", "ternopil", "khmelnytskyi", "vinnytsia"],
+    "chernihiv": ["kyiv", "sumy", "poltava"],
+    "crimea": ["kherson"],
+}
 
 
 @dataclass(frozen=True)
