@@ -6,6 +6,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .engine import Config, Engine
@@ -26,6 +27,7 @@ def create_app(cfg: Config | None = None, on_ready=None) -> FastAPI:
         await engine.stop()
 
     app = FastAPI(title="Drone Map", lifespan=lifespan, docs_url="/api/docs", redoc_url=None)
+    app.add_middleware(GZipMiddleware, minimum_size=1024)      # map data and state compress ~4x
     app.state.engine = engine
 
     @app.get("/api/state")
@@ -34,6 +36,10 @@ def create_app(cfg: Config | None = None, on_ready=None) -> FastAPI:
         if request.headers.get("if-none-match") == etag:
             return Response(status_code=304, headers={"ETag": etag})
         return JSONResponse(engine.snapshot, headers={"ETag": etag, "Cache-Control": "no-cache"})
+
+    @app.get("/api/occupied")
+    async def occupied():
+        return JSONResponse(engine.occupied.data, headers={"Cache-Control": "max-age=3600"})
 
     @app.get("/api/sources")
     async def sources():

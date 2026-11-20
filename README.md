@@ -4,17 +4,25 @@ A live map of drones and missiles over Ukraine, built by reading the public Tele
 channels (Air Force, reconnaissance channels, regional observers and aggregators) and fusing their
 reports into tracks.
 
-- **Every threat type has its own icon:** Shahed, jet Shahed (Geran-3), Gerbera decoy, recon UAV
-  (Orlan/ZALA), Lancet, Molniya, FPV, unknown UAV, cruise missile, ballistic missile, Kinzhal,
-  unknown missile, guided bomb (KAB). Icons rotate to the heading.
-- **Tracks:** reports from different channels are chained into one track per group. Solid lines
-  show the flown path, and dotted lines show the reported destination or heading.
+- **District map in the style of Ukrainian alert maps:** all 136 raions, shaded by air-alert
+  level (🔴 red / 🟡 yellow, per district, from the official alert feed), occupied territory
+  (DeepState line, updated daily) and Ukrainian place names. Add a street map underneath with
+  **Detail**.
+- **Every threat type has its own white silhouette:** Shahed, jet Shahed (Geran-3), Gerbera
+  decoy, recon UAV (Orlan/ZALA), Lancet, Molniya, FPV, unknown UAV, cruise missile, ballistic
+  missile, Kinzhal, unknown missile, guided bomb (KAB). Icons rotate to the heading.
+- **Tracks and predicted movement:** reports from different channels are chained into one track per
+  group, and the line shows the path reported so far. Between reports the icon keeps moving along its
+  reported course at its estimated speed, then jumps to the real position when the next report arrives.
+- **Russia layer:** drone and missile danger over Russia and the occupied territory, announced by
+  Russian-side channels (`@lpr1_treugolnik`), shown in cyan as its own layer. It never mixes with
+  Ukrainian targets or alerts.
 - **Reliability:** each track gets a confidence score from the channels that reported it. Official
   sources weigh most, then reconnaissance, then regional observers. Aggregators only count when they
   agree with someone else, so a target seen only by aggregators is shown faded with a "?".
   Impossible jumps (speed and heading checks), stale targets and shot-down targets are handled.
-- **Events:** explosions, shot-down reports, threat areas (e.g. "ballistic threat for Kharkiv
-  region"), air-raid alerts per region and nationwide notices (MiG-31K airborne etc.).
+- **Snapshot:** press the camera button, drag a box over any area, and download a clean infographic
+  (PNG), with paths, icons, alerts, counts, legend and scale, or the data as GeoJSON.
 - **App:** installable PWA (desktop and phone), works offline with the last known picture, with an
   optional "near me" warning when a confirmed target is close to or heading for your location.
 
@@ -148,7 +156,15 @@ precise as the posts (often "near village X" or "in region Y"). Reports lag real
 mass missile attacks with dozens of parallel groups can't be separated perfectly from text. Always
 follow official air-raid alerts.
 
+## Map data
+
+* `web/data/admin.json` holds the raions (OCHA COD-AB, valid from 2023-02-01) and oblasts derived
+  from them, plus western Russian regions and the Belarus/Moldova outlines (geoBoundaries /
+  OpenStreetMap). Rebuild it with `scripts/build_admin.py`; its docstring lists the downloads.
+* The occupied territory is fetched at run time from the daily DeepState mirror
+  (github.com/cyterat/deepstate-map-data) and cached in `data/occupied.geojson`.
+
 ## Credits
 
-Map data and tiles © OpenStreetMap contributors (fallback tiles © Esri). Village data © GeoNames (CC BY 4.0).
-Map library: Leaflet (BSD-2).
+Districts © OCHA (CC BY-IGO). Occupied territory © DeepState. Borders and street map © OpenStreetMap
+contributors (ODbL). Village data © GeoNames (CC BY 4.0). Map library: Leaflet (BSD-2).

@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const { THREATS, svg, explosion, kill } = window.DMIcons;
+  const { THREATS, svg, mapSvg, tint, explosion, kill } = window.DMIcons;
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -12,7 +12,7 @@
   };
 
   const FAMILY_ORDER = ['kinzhal', 'ballistic', 'cruise', 'missile', 'kab', 'jet_shahed', 'shahed', 'uav', 'gerbera', 'recon', 'lancet', 'molniya', 'fpv'];
-  const TIER_LABEL = { official: 'Official', recon: 'Recon', regional: 'Regional', aggregator: 'Aggregator' };
+  const TIER_LABEL = { official: 'Official', recon: 'Recon', regional: 'Regional', aggregator: 'Aggregator', russia: 'Russia-side' };
 
   const S = {
     state: null, sources: null, etag: null, lastFetchOk: 0, offline: false,
@@ -20,7 +20,10 @@
     hidden: new Set(prefs.get('hidden', [])),
     showUnconfirmed: prefs.get('showUnconfirmed', true),
     showHistory: prefs.get('showHistory', true),
-    showAlerts: prefs.get('showAlerts', false),
+    showAlerts: prefs.get('alertsOn', true),
+    showOccupied: prefs.get('showOccupied', true),
+    showRussia: prefs.get('showRussia', true),
+    showDetail: prefs.get('showDetail', false),
     me: prefs.get('me', null), radius: prefs.get('radius', 25), nearOn: prefs.get('nearOn', false),
     pickingMe: false, notified: new Set(), dismissed: new Set(prefs.get('dismissed', [])),
   };
@@ -58,33 +61,14 @@
   // ------------------------------------------------------------------ map
   const map = L.map('map', { zoomControl: false, minZoom: 4, maxZoom: 13, worldCopyJump: false, preferCanvas: false })
     .setView([48.7, 31.4], 6);
-  const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
-  // OpenStreetMap tiles (dark mode = CSS-inverted); Esri grey canvas as automatic fallback
-  const TILES = {
-    osm: { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', maxZoom: 19, attribution: '&copy; OpenStreetMap contributors', invert: true },
-    esri_dark: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', maxZoom: 16, attribution: 'Tiles &copy; Esri', invert: false },
-    esri_light: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', maxZoom: 16, attribution: 'Tiles &copy; Esri', invert: false },
-  };
-  let tiles = null, tileSource = 'osm', tileErrors = 0, tileLoads = 0;
-  function setTiles(source) {
-    tileSource = source || tileSource;
-    if (tiles) map.removeLayer(tiles);
-    const src = TILES[tileSource];
-    tileErrors = 0; tileLoads = 0;
-    tiles = L.tileLayer(src.url, { maxZoom: src.maxZoom, attribution: src.attribution, crossOrigin: true })
-      .on('tileload', () => { tileLoads++; })
-      .on('tileerror', () => {
-        tileErrors++;
-        if (tileSource === 'osm' && tileErrors >= 6 && tileLoads === 0) setTiles(darkQuery.matches ? 'esri_dark' : 'esri_light');
-      })
-      .addTo(map);
-    $('#map').classList.toggle('dark-tiles', src.invert && darkQuery.matches);
-  }
-  setTiles('osm');
-  darkQuery.addEventListener?.('change', () => setTiles(tileSource === 'osm' ? 'osm' : (darkQuery.matches ? 'esri_dark' : 'esri_light')));
+  map.attributionControl.addAttribution('Districts &copy; OCHA · Occupied &copy; DeepState · &copy; OpenStreetMap');
+  DMBase.init(map).then(() => {
+    DMBase.setOptions({ showAlerts: S.showAlerts, showOccupied: S.showOccupied, showRussia: S.showRussia });
+    if (S.showDetail) DMBase.setDetail(true);
+    if (S.state) renderMap();
+  }).catch(err => console.error('base map', err));
 
   const layers = {
-    alerts: L.layerGroup().addTo(map),
     areas: L.layerGroup().addTo(map),
     tracks: L.layerGroup().addTo(map),
     events: L.layerGroup().addTo(map),
@@ -94,9 +78,35 @@
 
   const visible = () => (S.state?.tracks || []).filter(t => !S.hidden.has(t.threat) && (S.showUnconfirmed || t.confirmed));
 
-  function predictKm(t) {
-    const v = t.speed_kmh || t.nominal_speed_kmh || 180;
-    return Math.max(15, Math.min(t.family === 'drone' ? 60 : 150, v * 0.25));
+  // ---------------------------------------------------------------- predicted movement
+  // Between reports a target keeps flying: its icon advances along the reported destination or
+  // heading at its observed (or typical) speed. A new report re-anchors it.
+  const PREDICT_MIN = { shahed: 20, uav: 20, gerbera: 20, jet_shahed: 10, cruise: 8, missile: 6 };
+  const SPEED_RANGE = { shahed: [120, 220], uav: [120, 220], gerbera: [100, 200], jet_shahed: [300, 550], cruise: [550, 900], missile: [550, 900] };
+  function bearing(a, b) {
+    const p1 = toRad(a.lat), p2 = toRad(b.lat), dl = toRad(b.lon - a.lon);
+    const x = Math.sin(dl) * Math.cos(p2), y = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
+    return (toDeg(Math.atan2(x, y)) + 360) % 360;
+  }
+  function predicted(t, at = now()) {
+    const still = { lat: t.lat, lon: t.lon, est: false, brg: t.heading };
+    const maxMin = PREDICT_MIN[t.threat];
+    if (!maxMin || t.status !== 'active' || ['inbound', 'origin'].includes(t.precision)) return still;
+    const dtMin = Math.min(maxMin, (at - t.last_seen) / 60);
+    if (dtMin <= 0.2) return still;
+    const [lo, hi] = SPEED_RANGE[t.threat];
+    const speed = Math.max(lo, Math.min(hi, t.speed_kmh || t.nominal_speed_kmh || lo));
+    let km = speed * dtMin / 60, brg = t.heading;
+    if (t.dest) {
+      const left = distKm(t, t.dest) - 3;
+      if (left <= 1) return still;
+      brg = bearing(t, t.dest);
+      km = Math.min(km, left);
+    }
+    if (brg == null) return still;
+    if (t.precision === 'region') km = Math.min(km, 25);          // coarse position: do not run far with it
+    const [lat, lon] = project(t.lat, t.lon, brg, km);
+    return { lat, lon, est: true, brg, km, mins: dtMin };
   }
 
   function zFor(t) {
@@ -107,101 +117,119 @@
   }
 
   function tipHtml(t) {
+    const p = predicted(t);
     const where = t.precision === 'inbound' ? `heading to ${esc(t.place)}` : esc(t.place);
     const dest = t.dest && t.precision !== 'inbound' ? ` → ${esc(t.dest.name)}` : '';
     const unc = t.confirmed ? '' : ' · <b style="color:var(--warn)">unconfirmed</b>';
-    return `<b>${esc(tLabel(t))}</b> · ${where}${dest}<br><span style="color:var(--muted)">${ago(t.last_seen)} · ${Math.round(t.confidence * 100)}% confidence${unc}</span>`;
+    const est = p.est ? `<br><span style="color:var(--muted)">estimated ~${Math.round(p.km)} km further since the last report</span>` : '';
+    return `<b>${esc(tLabel(t))}</b> · ${where}${dest}${est}<br><span style="color:var(--muted)">last report ${ago(t.last_seen)} · ${Math.round(t.confidence * 100)}% confidence${unc}</span>`;
   }
 
-  function drawTrack(t) {
-    const c = info(t.threat).color;
+  const drawn = new Map();       // track id -> { t, group, marker, est, anchor, iconKey }
+
+  function iconFor(t, rot) {
+    const sel = S.selected === t.id;
+    const hot = ['ballistic', 'kinzhal'].includes(t.threat) && t.status === 'active';
+    const cls = ['mk', t.status, t.confirmed ? '' : 'unconf', sel ? 'sel' : '', t.precision === 'inbound' ? 'inbound' : '', hot ? 'hot' : ''].join(' ');
+    const badge = t.count > 1 ? `<span class="mk-n">${t.count}</span>` : '';
+    const key = [cls, t.threat, t.count, Math.round(rot / 5)].join('|');
+    return { key, icon: L.divIcon({
+      className: '', iconSize: [34, 34], iconAnchor: [17, 17],
+      html: `<div class="${cls}" style="--c:${info(t.threat).color}"><div class="mk-rot" style="transform:rotate(${rot}deg)">${mapSvg(t.threat, 30)}</div>${badge}</div>`,
+    }) };
+  }
+
+  function upsertTrack(t) {
+    const c = tint(info(t.threat).color, 0.35);
     const sel = S.selected === t.id;
     const faded = t.status !== 'active' || !t.confirmed;
+    let d = drawn.get(t.id);
+    if (!d) {
+      d = { group: L.layerGroup().addTo(layers.tracks), marker: null, iconKey: '' };
+      drawn.set(t.id, d);
+    }
+    d.t = t;
+    d.group.clearLayers();
     const real = t.points.filter(p => p.precision !== 'inbound');
-
     if ((S.showHistory || sel) && real.length > 1) {
-      // coarse leading points (region centroid / launch area) get a faint dashed leg, observed points a solid line
+      // coarse leading points (region centre / launch area) get a faint dashed leg, observed points a solid line
       const firstExact = real.findIndex(p => p.precision === 'point');
       const solid = firstExact >= 0 ? real.slice(firstExact) : [];
       const lead = firstExact > 0 ? real.slice(0, firstExact + 1) : (firstExact < 0 ? real : []);
       if (lead.length > 1) {
-        L.polyline(lead.map(p => [p.lat, p.lon]), { color: c, weight: 2, opacity: faded ? 0.2 : 0.45, dashArray: '3 8', interactive: false })
-          .addTo(layers.tracks);
+        L.polyline(lead.map(p => [p.lat, p.lon]), { color: c, weight: 1.8, opacity: faded ? 0.25 : 0.5, dashArray: '3 7', interactive: false }).addTo(d.group);
       }
       if (solid.length > 1) {
-        L.polyline(solid.map(p => [p.lat, p.lon]), {
-          color: c, weight: sel ? 4.5 : 2.8, opacity: faded ? 0.35 : 0.9, lineCap: 'round', lineJoin: 'round',
-          dashArray: t.confirmed ? null : '6 7', interactive: false,
-        }).addTo(layers.tracks);
+        const ll = solid.map(p => [p.lat, p.lon]);
+        L.polyline(ll, { color: '#0b0e12', weight: sel ? 6.5 : 4.6, opacity: faded ? 0.25 : 0.55, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(d.group);
+        L.polyline(ll, { color: c, weight: sel ? 3.6 : 2.4, opacity: faded ? 0.4 : 0.95, lineCap: 'round', lineJoin: 'round',
+          dashArray: t.confirmed ? null : '6 7', interactive: false }).addTo(d.group);
       }
       real.slice(0, -1).forEach(p => {
-        L.circleMarker([p.lat, p.lon], { radius: sel ? 4 : 3, color: '#0b0e12', weight: 1, fillColor: c, fillOpacity: faded ? 0.35 : 0.95 })
+        L.circleMarker([p.lat, p.lon], { radius: sel ? 3.6 : 2.6, color: '#0b0e12', weight: 1, fillColor: c, fillOpacity: faded ? 0.4 : 1 })
           .bindTooltip(`${esc(p.place)} · ${clock(p.ts)}`, { className: 'dm-tip', direction: 'top' })
           .on('click', () => select(t.id, false))
-          .addTo(layers.tracks);
+          .addTo(d.group);
       });
     }
     if (t.precision === 'region' && t.status !== 'ended') {
-      L.circle([t.lat, t.lon], { radius: 32000, color: c, weight: 1, opacity: 0.4, fillOpacity: 0.05, dashArray: '3 5', interactive: false })
-        .addTo(layers.tracks);
+      L.circle([t.lat, t.lon], { radius: 28000, color: c, weight: 1, opacity: 0.45, fillOpacity: 0.06, dashArray: '3 5', interactive: false }).addTo(d.group);
     }
-    if (t.status === 'active' && t.precision !== 'inbound') {
-      let target = null;
-      if (t.dest) target = [t.dest.lat, t.dest.lon];
-      else if (t.heading != null) target = project(t.lat, t.lon, t.heading, predictKm(t));
-      if (target) {
-        L.polyline([[t.lat, t.lon], target], { color: c, weight: sel ? 3 : 2, opacity: faded ? 0.3 : 0.75, dashArray: '1 7', lineCap: 'round', interactive: false })
-          .addTo(layers.tracks);
-      }
-      if (t.dest) {
-        L.circleMarker([t.dest.lat, t.dest.lon], { radius: 5, color: c, weight: 2, dashArray: '2 3', fill: false, opacity: faded ? 0.4 : 0.9 })
-          .bindTooltip(`→ ${esc(t.dest.name)}`, { permanent: sel, className: 'dest-label', direction: 'right', offset: [7, 0] })
-          .addTo(layers.tracks);
-      }
+    // estimated leg since the last report (filled in by tick())
+    d.est = L.polyline([], { color: c, weight: 1.6, opacity: 0.7, dashArray: '1 5', lineCap: 'round', interactive: false }).addTo(d.group);
+    d.anchor = L.circleMarker([t.lat, t.lon], { radius: 3.2, color: c, weight: 1.4, fill: true, fillColor: '#0b0e12', fillOpacity: 1, opacity: 0, interactive: false }).addTo(d.group);
+    if (!d.marker) {
+      d.marker = L.marker([t.lat, t.lon], { riseOnHover: true, keyboard: true })
+        .bindTooltip(() => tipHtml(d.t), { className: 'dm-tip', direction: 'top', offset: [0, -17] })
+        .on('click', () => select(d.t.id, false))
+        .addTo(layers.markers);
     }
-    const hot = ['ballistic', 'kinzhal'].includes(t.threat) && t.status === 'active';
-    const cls = ['mk', t.status, t.confirmed ? '' : 'unconf', sel ? 'sel' : '', t.precision === 'inbound' ? 'inbound' : '', hot ? 'hot' : ''].join(' ');
-    const rot = t.heading != null && t.precision !== 'inbound' ? t.heading : 0;
-    const badge = t.count > 1 ? `<span class="mk-n">${t.count}</span>` : '';
-    const icon = L.divIcon({
-      className: '', iconSize: [36, 36], iconAnchor: [18, 18],
-      html: `<div class="${cls}" style="--c:${c}"><div class="mk-rot" style="transform:rotate(${rot}deg)">${svg(t.threat, c, 32)}</div>${badge}</div>`,
-    });
-    L.marker([t.lat, t.lon], { icon, zIndexOffset: zFor(t), title: `${info(t.threat).label} – ${t.place}`, riseOnHover: true })
-      .bindTooltip(tipHtml(t), { className: 'dm-tip', direction: 'top', offset: [0, -18] })
-      .on('click', () => select(t.id, false))
-      .addTo(layers.markers);
+    d.marker.setZIndexOffset(zFor(t));
+    d.iconKey = '';
+    placeTrack(d);
   }
+
+  function placeTrack(d) {
+    const t = d.t;
+    const p = predicted(t);
+    const rot = t.precision === 'inbound' ? 0 : (p.brg ?? t.heading ?? 0);
+    const { key, icon } = iconFor(t, rot);
+    if (key !== d.iconKey) { d.marker.setIcon(icon); d.iconKey = key; }
+    d.marker.setLatLng([p.lat, p.lon]);
+    d.est.setLatLngs(p.est ? [[t.lat, t.lon], [p.lat, p.lon]] : []);
+    d.anchor.setStyle({ opacity: p.est ? 0.9 : 0, fillOpacity: p.est ? 1 : 0 });
+  }
+
+  function renderTracks() {
+    const vis = visible();
+    const ids = new Set(vis.map(t => t.id));
+    for (const [id, d] of drawn) {
+      if (!ids.has(id)) { layers.tracks.removeLayer(d.group); layers.markers.removeLayer(d.marker); drawn.delete(id); }
+    }
+    for (const t of vis.slice().reverse()) upsertTrack(t);
+  }
+
+  setInterval(() => { if (!document.hidden) for (const d of drawn.values()) placeTrack(d); }, 1000);
 
   function drawEvent(e) {
     if (e.threat && S.hidden.has(e.threat)) return;
     if (!S.showUnconfirmed && !e.confirmed) return;
     const age = now() - e.last_ts;
     if (e.kind === 'explosion') {
-      const icon = L.divIcon({ className: '', html: `<div class="ex ${age > 900 ? 'old' : ''}">${explosion(26)}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] });
+      const icon = L.divIcon({ className: '', html: `<div class="ex ${age > 900 ? 'old' : ''}">${explosion(24)}</div>`, iconSize: [24, 24], iconAnchor: [12, 12] });
       L.marker([e.lat, e.lon], { icon, zIndexOffset: 500 })
         .bindTooltip(`<b>Explosions</b> · ${esc(e.place)}<br><span style="color:var(--muted)">${ago(e.ts)} · ${e.sources.length} source(s)</span>`, { className: 'dm-tip', direction: 'top' })
         .addTo(layers.events);
     } else if (e.kind === 'kill') {
-      const icon = L.divIcon({ className: '', html: `<div class="kill-mk">${kill(18)}</div>`, iconSize: [18, 18], iconAnchor: [9, 9] });
+      const icon = L.divIcon({ className: '', html: `<div class="kill-mk">${kill(16)}</div>`, iconSize: [16, 16], iconAnchor: [8, 8] });
       L.marker([e.lat, e.lon], { icon, zIndexOffset: -50 })
         .bindTooltip(`<b>Shot down</b>${e.threat ? ' · ' + esc(info(e.threat).short) : ''} · ${esc(e.place)}<br><span style="color:var(--muted)">${ago(e.ts)}</span>`, { className: 'dm-tip', direction: 'top' })
         .addTo(layers.events);
     } else if (e.kind === 'threat' && e.threat) {
       const c = info(e.threat).color;
-      L.circle([e.lat, e.lon], { radius: e.precision === 'region' ? 75000 : 20000, color: c, weight: 2, dashArray: '6 6', fillColor: c, fillOpacity: 0.08, className: 'threat-area' })
+      L.circle([e.lat, e.lon], { radius: e.precision === 'region' ? 60000 : 16000, color: c, weight: 1.6, dashArray: '5 6', fillColor: c, fillOpacity: 0.08, className: 'threat-area' })
         .bindTooltip(`<b>${esc(info(e.threat).label)} threat</b> · ${esc(e.place)}<br><span style="color:var(--muted)">${ago(e.ts)}</span>`, { className: 'dm-tip', sticky: true })
         .addTo(layers.areas);
-    }
-  }
-
-  function drawAlerts() {
-    layers.alerts.clearLayers();
-    if (!S.showAlerts) return;
-    for (const a of S.state?.alerts || []) {
-      if (a.lat == null) continue;
-      L.circle([a.lat, a.lon], { radius: a.oblast === 'kyiv_city' ? 18000 : 85000, color: '#f43f5e', weight: 1, opacity: 0.35, fillOpacity: 0.07, interactive: false })
-        .addTo(layers.alerts);
     }
   }
 
@@ -213,11 +241,12 @@
   }
 
   function renderMap() {
-    layers.tracks.clearLayers(); layers.markers.clearLayers(); layers.events.clearLayers(); layers.areas.clearLayers();
+    layers.events.clearLayers(); layers.areas.clearLayers();
     if (!S.state) return;
     for (const e of S.state.events) drawEvent(e);
-    for (const t of visible().slice().reverse()) drawTrack(t);
-    drawAlerts();
+    renderTracks();
+    DMBase.setAlerts(S.state.alerts);
+    DMBase.setRuZones(S.state.ru_zones);
     drawMe();
   }
 
@@ -281,9 +310,14 @@
     const present = FAMILY_ORDER.filter(k => counts[k] || S.hidden.has(k));
     const chips = present.map(k => `<button class="chip ${S.hidden.has(k) ? 'off' : ''}" data-type="${k}" title="${esc(info(k).label)}" aria-pressed="${!S.hidden.has(k)}">
       ${svg(k, null, 18)}${esc(info(k).short)} <span class="n">${counts[k] || 0}</span></button>`);
-    chips.push(`<button class="chip opt ${S.showUnconfirmed ? 'on' : ''}" data-opt="showUnconfirmed" title="Show reports that only aggregators have made">Unconfirmed</button>`);
-    chips.push(`<button class="chip opt ${S.showHistory ? 'on' : ''}" data-opt="showHistory" title="Show flown path of every target">Tracks</button>`);
-    chips.push(`<button class="chip opt ${S.showAlerts ? 'on' : ''}" data-opt="showAlerts" title="Shade regions under air-raid alert">Alert zones</button>`);
+    const opt = (key, label, title) => `<button class="chip opt ${S[key] ? 'on' : ''}" data-opt="${key}" title="${title}">${label}</button>`;
+    chips.push(opt('showUnconfirmed', 'Unconfirmed', 'Show reports that only aggregators have made'));
+    chips.push(opt('showHistory', 'Paths', 'Show the path each target has flown'));
+    chips.push(opt('showAlerts', 'Alerts', 'Shade districts under air-raid alert (red / yellow level)'));
+    chips.push(opt('showOccupied', 'Occupied', 'Occupied territory (DeepState)'));
+    const ru = (S.state?.ru_zones || []).length;
+    chips.push(opt('showRussia', `Russia${ru ? ' <span class="n">' + ru + '</span>' : ''}`, 'Drone and missile danger over Russia and occupied areas, from Russian-side channels'));
+    chips.push(opt('showDetail', 'Detail', 'Street map underneath, for finding villages'));
     $('#filters').innerHTML = chips.join('');
   }
   $('#filters').addEventListener('click', e => {
@@ -294,8 +328,11 @@
       S.hidden.has(k) ? S.hidden.delete(k) : S.hidden.add(k);
       prefs.set('hidden', [...S.hidden]);
     } else if (b.dataset.opt) {
-      S[b.dataset.opt] = !S[b.dataset.opt];
-      prefs.set(b.dataset.opt, S[b.dataset.opt]);
+      const k = b.dataset.opt;
+      S[k] = !S[k];
+      prefs.set(k === 'showAlerts' ? 'alertsOn' : k, S[k]);
+      if (k === 'showDetail') DMBase.setDetail(S.showDetail);
+      else DMBase.setOptions({ showAlerts: S.showAlerts, showOccupied: S.showOccupied, showRussia: S.showRussia });
     }
     renderAll(true);
   });
@@ -410,9 +447,24 @@
   }
 
   // ------------------------------------------------------------------ panel: alerts
+  function alertGroups(alerts) {
+    const by = {};
+    for (const a of alerts) (by[a.oblast] = by[a.oblast] || []).push(a);
+    const oblastName = k => (DMBase.data?.oblasts.features.find(f => f.properties.key === k)?.properties.name) || k;
+    return Object.entries(by).sort((x, y) => oblastName(x[0]).localeCompare(oblastName(y[0]))).map(([ob, list]) => {
+      const whole = list.find(a => a.kind === 'oblast');
+      const parts = list.filter(a => a.kind === 'raion');
+      const lvl = a => `<i class="lvl lvl-${a.level}" title="${a.level} level"></i>`;
+      const items = whole ? `${lvl(whole)} whole region` : parts.map(a => `${lvl(a)}${esc(a.name.replace(' raion', ''))}`).join(' · ');
+      const since = Math.min(...list.map(a => a.since));
+      return `<div class="alert-row"><span class="an"><b>${esc(oblastName(ob))}</b><br><span class="alert-parts">${items}</span></span><span class="at">since ${clock(since)}</span></div>`;
+    }).join('');
+  }
+
   function renderAlertsTab() {
     const alerts = S.state?.alerts || [];
     const banners = S.state?.banners || [];
+    const ruZones = S.state?.ru_zones || [];
     $('#tabCountAlerts').textContent = alerts.length || '';
     const legend = FAMILY_ORDER.map(k => `<div>${svg(k, null, 20)}${esc(info(k).label)}</div>`).join('');
     $('#tab-alerts').innerHTML = `
@@ -424,14 +476,20 @@
       <div class="setting"><span>Near-me warnings</span><button class="btn ${S.nearOn ? 'btn-accent' : ''}" id="nearToggle">${S.nearOn ? 'On' : 'Off'}</button></div>
       ${banners.length ? `<div class="section-title">Notices</div>` + banners.map(b => `<div class="alert-row"><span class="ad" style="background:var(--warn)"></span><span class="an" style="font-weight:500">${esc(b.text)}</span><span class="at">${clock(b.ts)}</span></div>`).join('') : ''}
       <div class="section-title">Air-raid alerts · ${alerts.length}</div>
-      ${alerts.length ? alerts.map(a => `<div class="alert-row"><span class="ad"></span><span class="an">${esc(a.name)}</span><span class="at">since ${clock(a.since)}</span></div>`).join('')
-        : '<div class="empty" style="padding:14px">No active air-raid alerts reported.</div>'}
+      ${alerts.length ? alertGroups(alerts) : '<div class="empty" style="padding:14px">No active air-raid alerts reported.</div>'}
+      ${ruZones.length ? `<div class="section-title">Danger over Russia / occupied · ${ruZones.length}</div>
+        <p class="hint">From Russian-side channels: where Ukrainian drones or missiles are announced. Shown in cyan on the map.</p>` +
+        ruZones.map(z => `<div class="alert-row"><span class="ad" style="background:#1fb5cc;box-shadow:0 0 0 3px rgba(31,181,204,.25)"></span>
+          <span class="an">${esc(z.name)}</span><span class="at">${z.kind === 'missile' ? 'missiles' : 'drones'} · ${clock(z.since)}</span></div>`).join('') : ''}
       <div class="section-title">Legend</div><div class="legend">${legend}
-        <div>${explosion(18)}Explosions reported</div><div>${kill(16)}Shot down</div></div>
-      <div class="section-title">How confidence works</div>
-      <p style="color:var(--muted);font-size:12.5px;margin:0 4px">Each target merges reports from several channels. Official sources weigh most, then reconnaissance and regional observers.
-      Aggregators only count when they agree with someone else; a target seen only by aggregators is shown faded with a “?”. Solid lines are the flown path,
-      dotted lines the reported destination or heading.</p>`;
+        <div>${explosion(18)}Explosions reported</div><div>${kill(16)}Shot down</div>
+        <div><i class="swatch" style="background:#a52f30"></i>Air alert, red level</div><div><i class="swatch" style="background:#c2981f"></i>Air alert, yellow level</div>
+        <div><i class="swatch" style="background:#4f2027"></i>Occupied territory</div><div><i class="swatch" style="background:#1fb5cc"></i>Danger over Russia</div></div>
+      <div class="section-title">How it works</div>
+      <p class="hint">Each target merges reports from several channels. Official sources weigh most, then reconnaissance and regional observers.
+      Aggregators only count when they agree with someone else; a target seen only by aggregators is shown faded with a “?”.
+      The solid line is the path reported so far. Between reports the icon keeps moving along its reported course at its estimated speed
+      (dotted leg), and jumps to the real position when the next report arrives.</p>`;
     $('#radiusSel').onchange = e => { S.radius = +e.target.value; prefs.set('radius', S.radius); drawMe(); checkNear(); };
     $('#gpsBtn').onclick = locate;
     $('#pickBtn').onclick = () => { S.pickingMe = true; toast('Tap the map to set your location'); collapseSheet(); };
@@ -536,14 +594,15 @@
     const hits = [];
     for (const t of S.state.tracks) {
       if (t.status !== 'active' || !t.confirmed || t.precision === 'region') continue;
-      const d = distKm(S.me, t);
+      const pp = predicted(t);
+      const d = distKm(S.me, pp);
       let why = null;
       if (t.precision !== 'inbound' && d <= S.radius) why = `${Math.round(d)} km from you`;
       else if (t.dest && distKm(S.me, t.dest) <= S.radius) why = `heading to ${t.dest.name}`;
-      else if (t.heading != null && t.precision !== 'inbound') {
+      else if ((pp.brg ?? t.heading) != null && t.precision !== 'inbound') {
         const ahead = Math.min(150, (t.speed_kmh || t.nominal_speed_kmh) * 0.25);
         for (let k = 5; k <= ahead; k += 5) {
-          const [la, lo] = project(t.lat, t.lon, t.heading, k);
+          const [la, lo] = project(pp.lat, pp.lon, pp.brg ?? t.heading, k);
           if (distKm(S.me, { lat: la, lon: lo }) <= S.radius) { why = `on course toward you`; break; }
         }
       }
@@ -600,6 +659,97 @@
     clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, 3200);
   }
 
+  // ------------------------------------------------------------------ area snapshot (download a graphic)
+  let snapRect = null, snapStart = null;
+  function enterSnap() {
+    if (!DMBase.data) return toast('Map data is still loading');
+    S.snapping = true;
+    document.body.classList.add('snap-mode');
+    map.dragging.disable(); map.boxZoom.disable();
+    $('#snapBtn').classList.add('on');
+    toast('Drag a box over the area to capture. Tap once for the whole view. Esc cancels.');
+  }
+  function exitSnap() {
+    S.snapping = false; snapStart = null;
+    document.body.classList.remove('snap-mode');
+    map.dragging.enable(); map.boxZoom.enable();
+    $('#snapBtn').classList.remove('on');
+    if (snapRect) { map.removeLayer(snapRect); snapRect = null; }
+  }
+  const mapEl = $('#map');
+  mapEl.addEventListener('pointerdown', e => {
+    if (!S.snapping) return;
+    e.preventDefault(); e.stopPropagation();
+    snapStart = { ll: map.mouseEventToLatLng(e), x: e.clientX, y: e.clientY };
+    mapEl.setPointerCapture?.(e.pointerId);
+  }, true);
+  mapEl.addEventListener('pointermove', e => {
+    if (!S.snapping || !snapStart) return;
+    const b = L.latLngBounds(snapStart.ll, map.mouseEventToLatLng(e));
+    if (!snapRect) snapRect = L.rectangle(b, { color: '#4cc2ff', weight: 2, dashArray: '6 5', fillOpacity: 0.08, interactive: false }).addTo(map);
+    else snapRect.setBounds(b);
+  }, true);
+  mapEl.addEventListener('pointerup', e => {
+    if (!S.snapping || !snapStart) return;
+    const small = Math.hypot(e.clientX - snapStart.x, e.clientY - snapStart.y) < 12;
+    const bounds = small ? map.getBounds() : L.latLngBounds(snapStart.ll, map.mouseEventToLatLng(e));
+    exitSnap();
+    openSnapshot(bounds);
+  }, true);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (S.snapping) exitSnap(); else closeSnapshot(); } });
+  $('#snapBtn').addEventListener('click', () => (S.snapping ? exitSnap() : enterSnap()));
+
+  let snapBounds = null, snapUrl = null, snapTitle = '';
+  function snapOptions() {
+    return { bounds: snapBounds, state: S.state, base: DMBase, tracks: visible(), predicted,
+      show: { alerts: S.showAlerts, occupied: S.showOccupied, russia: S.showRussia }, title: snapTitle };
+  }
+  async function openSnapshot(bounds) {
+    snapBounds = bounds;
+    snapTitle = `Air situation · ${DMSnapshot.areaName(bounds, DMBase)}`;
+    const m = $('#snapModal');
+    m.hidden = false;
+    m.innerHTML = `<div class="modal-card" role="dialog" aria-label="Area snapshot">
+      <div class="modal-head"><b>Area snapshot</b><button class="btn" id="snapClose">Close</button></div>
+      <div class="snap-preview" id="snapPreview"><div class="empty">Rendering…</div></div>
+      <div class="modal-actions">
+        <input id="snapTitleIn" class="text-in" value="${esc(snapTitle)}" aria-label="Title">
+        <button class="btn btn-accent" id="snapPng">Download PNG</button>
+        <button class="btn" id="snapJson">Download data (GeoJSON)</button>
+      </div></div>`;
+    $('#snapClose').onclick = closeSnapshot;
+    m.onclick = e => { if (e.target === m) closeSnapshot(); };
+    let tmr = null;
+    $('#snapTitleIn').oninput = e => { snapTitle = e.target.value; clearTimeout(tmr); tmr = setTimeout(drawSnapshot, 350); };
+    $('#snapPng').onclick = () => { if (snapUrl) download(snapUrl, `drone-map-${stamp()}.png`); };
+    $('#snapJson').onclick = () => {
+      const blob = new Blob([JSON.stringify(DMSnapshot.geojson(snapBounds, S.state, visible(), predicted), null, 1)], { type: 'application/geo+json' });
+      const url = URL.createObjectURL(blob);
+      download(url, `drone-map-${stamp()}.geojson`);
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    };
+    drawSnapshot();
+  }
+  async function drawSnapshot() {
+    try {
+      const cv = await DMSnapshot.render(snapOptions());
+      const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+      if (snapUrl) URL.revokeObjectURL(snapUrl);
+      snapUrl = URL.createObjectURL(blob);
+      const pv = $('#snapPreview');
+      if (pv) pv.innerHTML = `<img src="${snapUrl}" alt="Snapshot of the selected area">`;
+    } catch (err) {
+      console.error(err);
+      const pv = $('#snapPreview');
+      if (pv) pv.innerHTML = '<div class="empty">Could not render the snapshot.</div>';
+    }
+  }
+  function closeSnapshot() { $('#snapModal').hidden = true; }
+  function stamp() { return new Date().toISOString().slice(0, 16).replace(/[-:T]/g, ''); }
+  function download(url, name) {
+    const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  }
+
   // ------------------------------------------------------------------ data loop
   function renderAll(mapToo) {
     if (S.selected && !(S.state?.tracks || []).some(t => t.id === S.selected)) S.selected = null;
@@ -631,7 +781,15 @@
 
   $('#nearMe').classList.toggle('on', S.nearOn);
   drawMe();
+  async function loadOccupied() {
+    try {
+      const r = await fetch('/api/occupied');
+      if (r.ok) DMBase.setOccupied(await r.json());
+    } catch { /* offline: keep what we have */ }
+  }
   poll();
   loadSources();
+  loadOccupied();
+  setInterval(loadOccupied, 30 * 60 * 1000);
   setInterval(loadSources, 20000);
 })();

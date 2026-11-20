@@ -506,7 +506,6 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
     res.threats = msg_threats
     all_refs = [r for i in range(len(segments)) for r in seg_refs[i]]
     res.places = list(dict.fromkeys(r.label for r in all_refs))
-    msg_oblasts = list(dict.fromkeys(r.place.oblast for r in all_refs if _ukr(r.place.oblast)))
     single_region = prefer_oblasts if tier == "regional" and len(prefer_oblasts) <= 2 else []
 
     # ---- alert-system style posts: a header line and a list of districts
@@ -572,7 +571,6 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
                 d = dir_to_deg(fm.group("dir"))
                 heading = (d + 180) % 360 if d is not None else None
 
-        oblasts = list(dict.fromkeys(r.place.oblast for r in refs if _ukr(r.place.oblast)))
         has_move_cue = bool(MOVE_CUE_RE.search(seg)) or any(r.role in ("dest", "origin") for r in refs)
         is_allclear = bool(ALLCLEAR_RE.search(seg))
         is_alert = bool(ALERT_RE.search(seg)) and not is_allclear

@@ -1,7 +1,7 @@
 /* Drone Map service worker: offline app shell + last known state. */
-const VERSION = 'dm-v2';
+const VERSION = 'dm-v3';
 const SHELL = [
-  '/', '/index.html', '/styles.css', '/app.js', '/icons.js', '/manifest.webmanifest',
+  '/', '/index.html', '/styles.css', '/app.js', '/icons.js', '/basemap.js', '/snapshot.js', '/data/admin.json', '/manifest.webmanifest',
   '/icons/favicon.svg', '/icons/icon-192.png', '/icons/icon-512.png',
   '/vendor/leaflet/leaflet.css', '/vendor/leaflet/leaflet.js',
 ];
@@ -25,6 +25,13 @@ self.addEventListener('fetch', e => {
       if (res.status === 200) { const copy = res.clone(); caches.open(VERSION).then(c => c.put('/api/state', copy)); }
       return res;
     }).catch(() => caches.match('/api/state').then(r => r || new Response('{}', { status: 503 }))));
+    return;
+  }
+  if (url.pathname === '/api/occupied') {
+    e.respondWith(fetch(e.request).then(res => {
+      if (res.ok) { const copy = res.clone(); caches.open(VERSION).then(c => c.put('/api/occupied', copy)); }
+      return res;
+    }).catch(() => caches.match('/api/occupied')));
     return;
   }
   if (url.pathname.startsWith('/api/')) return;

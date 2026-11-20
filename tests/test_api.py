@@ -24,3 +24,7 @@ def test_api_and_static_in_demo_mode():
         assert page.status_code == 200 and "Drone Map" in page.text
         assert c.get("/sw.js").status_code == 200
         assert c.get("/manifest.webmanifest").status_code == 200
+        assert c.get("/api/occupied").json()["type"] == "FeatureCollection"
+        admin = c.get("/data/admin.json").json()
+        assert len(admin["raions"]["features"]) == 139 and admin["russia"]["features"]
+        assert "ru_zones" in body

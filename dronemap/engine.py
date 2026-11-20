@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .fusion import MsgRef, run_fusion
+from .occupied import Occupied
 from .parser import ParsedMessage, parse_message
 from .scraper import SourceStatus, WebScraper
 from .store import Store
@@ -90,6 +91,8 @@ class Engine:
         self.last_rebuild_ms = 0.0
         self.started = time.time()
         self._tasks: list[asyncio.Task] = []
+        db_dir = Path(self.cfg.db_path).parent if self.cfg.db_path != ":memory:" else Path("data")
+        self.occupied = Occupied(str(db_dir / "occupied.geojson"))
 
     # ----------------------------------------------------------------- rebuild
     def notify(self) -> None:
@@ -150,7 +153,7 @@ class Engine:
 
     # ----------------------------------------------------------------- lifecycle
     async def start(self) -> None:
-        loop_tasks = [self._rebuild_loop()]
+        loop_tasks = [self._rebuild_loop(), self.occupied.run()]
         if self.cfg.mode == "demo":
             from .demo import DemoSource
             loop_tasks.append(DemoSource(self.store, self.notify, self.status).run())

@@ -44,6 +44,9 @@
       <button class="ctl" id="fitAll" aria-label="Show all targets" title="Show all targets">
         <svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2"/></svg>
       </button>
+      <button class="ctl" id="snapBtn" aria-label="Snapshot of an area" title="Snapshot: select an area and download a graphic">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 8h3l2-3h6l2 3h3v11H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+      </button>
       <button class="ctl" id="nearMe" aria-label="Alerts near me" title="Alerts near my location">
         <svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="3.5" fill="currentColor"/><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3" stroke="currentColor" stroke-width="2"/></svg>
       </button>
@@ -68,9 +71,12 @@
   </main>
 
   <div id="toast" class="toast" role="status" hidden></div>
+  <div id="snapModal" class="modal" hidden></div>
 
   <script src="vendor/leaflet/leaflet.js"></script>
   <script src="icons.js"></script>
+  <script src="basemap.js"></script>
+  <script src="snapshot.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
