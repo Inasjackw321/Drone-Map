@@ -33,8 +33,10 @@
       <path d="M16 4 L28.5 24.5 L16 21 L3.5 24.5 Z" fill="${c}" fill-opacity="0.45" stroke="${c}" stroke-width="2.2" stroke-linejoin="round"/>
       <path d="M16 4 L28.5 24.5 L16 21 L3.5 24.5 Z" fill="none" stroke="${INK}" stroke-width="0.8" stroke-dasharray="2 2"/>`,
     uav: c => `
-      <path d="M16 3 L26.5 17 L16 29 L5.5 17 Z" fill="${c}" ${S}/>
-      <circle cx="16" cy="16.5" r="3" fill="${INK}"/>`,
+      <path d="M16 20.5 L22.6 26.8 L21.1 28.4 L16 24.4 L10.9 28.4 L9.4 26.8 Z" fill="${c}" ${S}/>
+      <path d="M16 8.6 L29.2 13.6 L29.2 16.4 L16 13.9 L2.8 16.4 L2.8 13.6 Z" fill="${c}" ${S}/>
+      <path d="M16 2.6 C17.5 2.6 18.1 4.4 18.1 6.6 V24.6 L16 27.6 L13.9 24.6 V6.6 C13.9 4.4 14.5 2.6 16 2.6 Z" fill="${c}" ${S}/>
+      <circle cx="16" cy="6.4" r="1.15" fill="${INK}"/>`,
     recon: c => `
       <rect x="13.9" y="2.5" width="4.2" height="25" rx="2" fill="${c}" ${S}/>
       <rect x="1" y="9.8" width="30" height="4.8" rx="2" fill="${c}" ${S}/>

@@ -10,6 +10,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import __version__
 from .fusion import MsgRef, run_fusion
 from .occupied import Occupied
 from .parser import ParsedMessage, parse_message
@@ -93,6 +94,7 @@ class Engine:
         self._tasks: list[asyncio.Task] = []
         db_dir = Path(self.cfg.db_path).parent if self.cfg.db_path != ":memory:" else Path("data")
         self.occupied = Occupied(str(db_dir / "occupied.geojson"))
+        self.update = {"current": __version__, "latest": None, "available": False}
 
     # ----------------------------------------------------------------- rebuild
     def notify(self) -> None:
@@ -129,7 +131,7 @@ class Engine:
             self.version += 1
             self._last_hash = digest
         snap.update({"version": self.version, "generated_at": now, "mode": self.cfg.mode,
-                     "messages_in_window": len(items)})
+                     "messages_in_window": len(items), "app": self.update})
         self.snapshot = snap
         self.last_rebuild_ms = (time.perf_counter() - t0) * 1000
         return snap
@@ -151,9 +153,33 @@ class Engine:
                 self.store.prune(time.time() - self.cfg.keep_hours * 3600)
                 last_prune = time.time()
 
+    async def _update_loop(self) -> None:
+        """Tell the user when main on GitHub has a newer version than the one running."""
+        if os.environ.get("DRONEMAP_NO_UPDATE_CHECK"):
+            return
+        url = os.environ.get("DRONEMAP_UPDATE_URL",
+                             "https://raw.githubusercontent.com/Inasjackw321/Drone-Map/main/dronemap/__init__.py")
+        import re
+        import httpx
+        as_tuple = lambda v: tuple(int(x) for x in v.split("."))  # noqa: E731
+        while True:
+            try:
+                async with httpx.AsyncClient(timeout=15) as c:
+                    r = await c.get(url)
+                m = re.search(r'__version__\s*=\s*"([\d.]+)"', r.text) if r.status_code == 200 else None
+                if m:
+                    latest = m.group(1)
+                    self.update = {"current": __version__, "latest": latest,
+                                   "available": as_tuple(latest) > as_tuple(__version__)}
+                    if self.update["available"]:
+                        log.warning("A newer Drone Map (%s) is available: run start.bat / start.sh or git pull", latest)
+            except Exception as e:  # noqa: BLE001 - never let the update check disturb the map
+                log.debug("update check failed: %s", e)
+            await asyncio.sleep(6 * 3600)
+
     # ----------------------------------------------------------------- lifecycle
     async def start(self) -> None:
-        loop_tasks = [self._rebuild_loop(), self.occupied.run()]
+        loop_tasks = [self._rebuild_loop(), self.occupied.run(), self._update_loop()]
         if self.cfg.mode == "demo":
             from .demo import DemoSource
             loop_tasks.append(DemoSource(self.store, self.notify, self.status).run())
@@ -201,7 +227,7 @@ class Engine:
         for st in self.status.values():
             states[st.state] = states.get(st.state, 0) + 1
         newest = max((st.last_ok or 0 for st in self.status.values()), default=0)
-        return {"ok": True, "mode": self.cfg.mode, "version": self.version, "uptime_s": round(time.time() - self.started),
+        return {"ok": True, "mode": self.cfg.mode, "version": self.version, "app": self.update, "uptime_s": round(time.time() - self.started),
                 "sources": states, "channels": len(self.channels), "last_source_ok": newest or None,
                 "rebuild_ms": round(self.last_rebuild_ms, 1),
                 "messages_in_window": self.snapshot.get("messages_in_window", 0)}

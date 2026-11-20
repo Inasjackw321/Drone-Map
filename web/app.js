@@ -133,9 +133,10 @@
     const cls = ['mk', t.status, t.confirmed ? '' : 'unconf', sel ? 'sel' : '', t.precision === 'inbound' ? 'inbound' : '', hot ? 'hot' : ''].join(' ');
     const badge = t.count > 1 ? `<span class="mk-n">${t.count}</span>` : '';
     const key = [cls, t.threat, t.count, Math.round(rot / 5)].join('|');
+    const size = info(t.threat).family === 'drone' ? 26 : 28;          // drones a touch smaller: "mini drones"
     return { key, icon: L.divIcon({
-      className: '', iconSize: [34, 34], iconAnchor: [17, 17],
-      html: `<div class="${cls}" style="--c:${info(t.threat).color}"><div class="mk-rot" style="transform:rotate(${rot}deg)">${mapSvg(t.threat, 30)}</div>${badge}</div>`,
+      className: '', iconSize: [30, 30], iconAnchor: [15, 15],
+      html: `<div class="${cls}" style="--c:${info(t.threat).color}"><div class="mk-rot" style="transform:rotate(${rot}deg)">${mapSvg(t.threat, size)}</div>${badge}</div>`,
     }) };
   }
 
@@ -180,7 +181,7 @@
     d.anchor = L.circleMarker([t.lat, t.lon], { radius: 3.2, color: c, weight: 1.4, fill: true, fillColor: '#0b0e12', fillOpacity: 1, opacity: 0, interactive: false }).addTo(d.group);
     if (!d.marker) {
       d.marker = L.marker([t.lat, t.lon], { riseOnHover: true, keyboard: true })
-        .bindTooltip(() => tipHtml(d.t), { className: 'dm-tip', direction: 'top', offset: [0, -17] })
+        .bindTooltip(() => tipHtml(d.t), { className: 'dm-tip', direction: 'top', offset: [0, -15] })
         .on('click', () => select(d.t.id, false))
         .addTo(layers.markers);
     }
@@ -288,10 +289,15 @@
 
   function renderBanners() {
     const list = (S.state?.banners || []).filter(b => !S.dismissed.has(b.key)).slice(0, 2);
+    const up = S.state?.app;
+    if (up?.available && !S.dismissed.has('update:' + up.latest)) {
+      list.unshift({ key: 'update:' + up.latest, kind: 'update', ts: now(), channel: 'drone-map',
+        text: `A newer version (${up.latest}) is available. Close this window's terminal and double-click start.bat (or run: git pull).` });
+    }
     requestAnimationFrame(() => document.documentElement.style.setProperty('--banner-h', $('#banners').offsetHeight + 'px'));
     $('#banners').innerHTML = list.map(b => {
-      const kind = b.kind === 'aviation' ? 'Aviation' : (b.kind.startsWith('threat:') ? info(b.kind.slice(7)).short + ' threat' : 'Notice');
-      return `<div class="banner ${b.kind === 'aviation' ? 'aviation' : ''}"><span class="b-kind">${esc(kind)}</span>
+      const kind = b.kind === 'update' ? 'Update' : b.kind === 'aviation' ? 'Aviation' : (b.kind.startsWith('threat:') ? info(b.kind.slice(7)).short + ' threat' : 'Notice');
+      return `<div class="banner ${b.kind === 'aviation' ? 'aviation' : b.kind === 'update' ? 'update' : ''}"><span class="b-kind">${esc(kind)}</span>
         <span class="b-text" title="${esc(b.text)}">${esc(b.text)}</span><span class="b-time">${clock(b.ts)} · @${esc(b.channel)}</span>
         <button data-dismiss="${esc(b.key)}" aria-label="Dismiss">×</button></div>`;
     }).join('');

@@ -28,27 +28,23 @@ reports into tracks.
 
 ## Run it
 
-Needs Python 3.10+ (on Windows, tick "Add Python to PATH" when installing).
+Needs Python 3.10+ (on Windows, tick "Add Python to PATH" when installing) and git.
 
 ```bash
 git clone https://github.com/inasjackw321/drone-map.git
 ```
 
-```bash
-cd drone-map
-```
+Then, every time:
 
-```bash
-pip install -r requirements.txt
-```
+* **Windows:** double-click **`start.bat`** in the `drone-map` folder.
+* **Mac / Linux:** run `./start.sh`.
 
-```bash
-python run.py
-```
+It updates to the latest version, installs what is needed and opens the map at
+http://localhost:8000. Keep its window open while you use the map; close it (or Ctrl+C) to stop.
+The first full round of channel reads takes about a minute, and the last 3–4 hours of posts
+are loaded on start. When a newer version exists, the map shows an "Update" banner.
 
-Your browser opens the map at http://localhost:8000 (open it yourself if it doesn't). Keep the
-terminal window open while you use the map; Ctrl+C stops it. The first full round of channel
-reads takes about a minute, and the last 3–4 hours of posts are loaded on start.
+By hand, the same is `git pull`, `pip install -r requirements.txt`, `python run.py`.
 
 To try it without Telegram access, run the built-in scripted scenario:
 
