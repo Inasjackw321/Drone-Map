@@ -1,0 +1,12 @@
+services:
+  dronemap:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DRONEMAP_SOURCE=web
+      # - TG_API_ID=
+      # - TG_API_HASH=
+    restart: unless-stopped

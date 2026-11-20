@@ -113,7 +113,26 @@ class Settlements:
         if path.exists():
             self._load(path)
 
+    @staticmethod
+    def _adjective_stems() -> tuple[str, ...]:
+        """Stems of curated city/region names: villages named "Харківське", "Сумське" are mostly the
+        ordinary adjective ("харківський напрямок"), so they are not matched."""
+        from .gazetteer import DATA as GDATA
+        stems = set()
+        for line in GDATA.splitlines():
+            parts = [p.strip() for p in line.split(";")]
+            if len(parts) != 7 or parts[5] not in ("C", "R"):
+                continue
+            for tok in parts[6].split(","):
+                tok = tok.strip()
+                if tok and not tok.startswith("/"):
+                    base = re.split(r"[~* ]", tok)[0].replace("'", "")
+                    if len(base) >= 3:
+                        stems.add(base)
+        return tuple(sorted(stems))
+
     def _load(self, path: Path) -> None:
+        adj = self._adjective_stems()
         with gzip.open(path, "rt", encoding="utf-8") as f:
             for line in f:
                 if line.startswith("#"):
@@ -127,6 +146,8 @@ class Settlements:
                         continue
                     if len(parts) == 1:
                         st = _stem_name(parts[0])
+                        if st.endswith(("ськ", "зьк", "цьк", "ск")) and st.replace("'", "").startswith(adj):
+                            continue
                         if len(st) >= 4:
                             self.single.setdefault(st, []).append(idx)
                     elif len(parts) <= 3:

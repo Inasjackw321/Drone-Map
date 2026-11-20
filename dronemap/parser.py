@@ -581,8 +581,9 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
         point_current = [r for r in current if r.precision == "point"]
         dest = dests[0] if dests else None
         origin = origins[0] if origins else None
-        if not current and not dest and origin is not None and not _ukr(origin.place.oblast):
-            pending_banners.append(("threat:" + threats_here[0], seg))     # launch notice, no target yet
+        if not dest and (origin is not None or current) and all(
+                r.place.kind == "F" or not _ukr(r.place.oblast) for r in (current or [origin])):
+            pending_banners.append(("threat:" + threats_here[0], seg))     # launch site, no target yet
             continue
 
         # several regions in one line ("ракети на Сумщині та Харківщині") are separate groups

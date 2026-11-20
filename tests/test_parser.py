@@ -282,3 +282,13 @@ def test_long_commentary_is_ignored():
             "ракеты летели на Киев, Львов и Хмельницкий, но большая часть была сбита, и это хорошая новость для всех нас, "
             "держитесь")
     assert not parse_message(text).sightings
+
+
+def test_launch_site_list_is_a_notice():
+    r = parse_message("Пуски шахедів: Міллерово, Гвардійське", (), "official")
+    assert not r.sightings and r.banners
+
+
+def test_city_adjective_is_not_a_village():
+    r = parse_message("Шахед на Харківське шосе", ("kharkiv",))
+    assert all(s.dest is None or s.dest.place.name != "Kharkivske" for s in r.sightings)

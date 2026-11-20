@@ -166,14 +166,12 @@ class Engine:
                 loop_tasks.append(scraper.run())
             if use_tg:
                 from .telethon_source import TelethonSource
-                select = None
-                if self.cfg.source == "both":
+                def no_preview_only(status):
                     # web preview first; the API covers channels whose preview is disabled
-                    def select(status):
-                        return [h for h, st in status.items() if st.state == "no_preview" or st.via == "telegram-api"]
+                    return [h for h, st in status.items() if st.state == "no_preview" or st.via == "telegram-api"]
                 loop_tasks.append(TelethonSource(self.cfg.tg_api_id, self.cfg.tg_api_hash, self.cfg.tg_session,
                                                  self.channels, self.store, self.notify, self.status,
-                                                 select=select).run())
+                                                 select=no_preview_only if self.cfg.source == "both" else None).run())
         self.rebuild()
         self._tasks = [asyncio.create_task(c) for c in loop_tasks]
 

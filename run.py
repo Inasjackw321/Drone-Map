@@ -25,6 +25,7 @@ def main() -> None:
     args = ap.parse_args()
 
     logging.basicConfig(level=args.log.upper(), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.getLogger("httpx").setLevel(logging.WARNING)       # one line per channel fetch is too noisy
     cfg = Config.from_env(mode="demo" if args.demo else None, source=args.source)
     uvicorn.run(create_app(cfg), host=args.host, port=args.port, log_level=args.log, proxy_headers=True)
 

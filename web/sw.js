@@ -1,5 +1,5 @@
 /* Drone Map service worker: offline app shell + last known state. */
-const VERSION = 'dm-v1';
+const VERSION = 'dm-v2';
 const SHELL = [
   '/', '/index.html', '/styles.css', '/app.js', '/icons.js', '/manifest.webmanifest',
   '/icons/favicon.svg', '/icons/icon-192.png', '/icons/icon-512.png',
@@ -30,14 +30,14 @@ self.addEventListener('fetch', e => {
   if (url.pathname.startsWith('/api/')) return;
 
   // map tiles: cache as they are viewed (bounded)
-  if (url.hostname.endsWith('basemaps.cartocdn.com')) {
+  if (url.hostname === 'tile.openstreetmap.org' || url.hostname === 'server.arcgisonline.com') {
     e.respondWith(caches.open('dm-tiles').then(async c => {
       const hit = await c.match(e.request);
       if (hit) return hit;
       const res = await fetch(e.request);
       if (res.ok) {
         c.put(e.request, res.clone());
-        c.keys().then(keys => { if (keys.length > 1500) keys.slice(0, keys.length - 1500).forEach(k => c.delete(k)); });
+        c.keys().then(keys => { if (keys.length > 800) keys.slice(0, keys.length - 800).forEach(k => c.delete(k)); });
       }
       return res;
     }).catch(() => fetch(e.request)));

@@ -59,16 +59,29 @@
   const map = L.map('map', { zoomControl: false, minZoom: 4, maxZoom: 13, worldCopyJump: false, preferCanvas: false })
     .setView([48.7, 31.4], 6);
   const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
-  let tiles = null;
-  function setTiles() {
+  // OpenStreetMap tiles (dark mode = CSS-inverted); Esri grey canvas as automatic fallback
+  const TILES = {
+    osm: { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', maxZoom: 19, attribution: '&copy; OpenStreetMap contributors', invert: true },
+    esri_dark: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', maxZoom: 16, attribution: 'Tiles &copy; Esri', invert: false },
+    esri_light: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', maxZoom: 16, attribution: 'Tiles &copy; Esri', invert: false },
+  };
+  let tiles = null, tileSource = 'osm', tileErrors = 0, tileLoads = 0;
+  function setTiles(source) {
+    tileSource = source || tileSource;
     if (tiles) map.removeLayer(tiles);
-    const style = darkQuery.matches ? 'dark_all' : 'light_all';
-    tiles = L.tileLayer(`https://{s}.basemaps.cartocdn.com/${style}/{z}/{x}/{y}{r}.png`, {
-      subdomains: 'abcd', maxZoom: 19, attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-    }).addTo(map);
+    const src = TILES[tileSource];
+    tileErrors = 0; tileLoads = 0;
+    tiles = L.tileLayer(src.url, { maxZoom: src.maxZoom, attribution: src.attribution, crossOrigin: true })
+      .on('tileload', () => { tileLoads++; })
+      .on('tileerror', () => {
+        tileErrors++;
+        if (tileSource === 'osm' && tileErrors >= 6 && tileLoads === 0) setTiles(darkQuery.matches ? 'esri_dark' : 'esri_light');
+      })
+      .addTo(map);
+    $('#map').classList.toggle('dark-tiles', src.invert && darkQuery.matches);
   }
-  setTiles();
-  darkQuery.addEventListener?.('change', setTiles);
+  setTiles('osm');
+  darkQuery.addEventListener?.('change', () => setTiles(tileSource === 'osm' ? 'osm' : (darkQuery.matches ? 'esri_dark' : 'esri_light')));
 
   const layers = {
     alerts: L.layerGroup().addTo(map),
@@ -219,8 +232,15 @@
       return;
     }
     if (S.offline) { el.classList.add('offline'); txt.textContent = 'Offline'; el.title = 'Cannot reach the server; showing the last data received.'; return; }
-    const lastSrc = S.sources ? Math.max(0, ...S.sources.groups.flatMap(g => g.channels.map(c => c.last_ok || 0))) : 0;
-    const okCount = S.sources ? S.sources.groups.flatMap(g => g.channels).filter(c => c.state === 'ok').length : 0;
+    const chans = S.sources ? S.sources.groups.flatMap(g => g.channels) : [];
+    const lastSrc = Math.max(0, ...chans.map(c => c.last_ok || 0));
+    const okCount = chans.filter(c => c.state === 'ok').length;
+    const pending = chans.filter(c => c.state === 'pending').length;
+    if (S.sources && !okCount && pending) {
+      el.classList.add('lagging'); txt.textContent = 'Starting…';
+      el.title = `Reading ${chans.length} channels for the first time`;
+      return;
+    }
     if (S.sources && (!lastSrc || now() - lastSrc > 180)) {
       el.classList.add('lagging'); txt.textContent = 'No fresh data';
       el.title = 'No Telegram channel has been read successfully in the last 3 minutes.';

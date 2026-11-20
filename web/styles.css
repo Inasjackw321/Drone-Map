@@ -96,6 +96,7 @@ a { color: var(--accent); }
 .layout { position: fixed; inset: var(--top) 0 0 0; }
 .map { position: absolute; inset: 0 var(--panel-w) 0 0; background: var(--bg); }
 .leaflet-container { background: var(--bg); font: inherit; }
+.dark-tiles .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.82) contrast(.92) saturate(.55); }
 .leaflet-control-attribution { font-size: 10px; background: color-mix(in srgb, var(--panel) 75%, transparent) !important; color: var(--muted); }
 .leaflet-control-attribution a { color: var(--muted); }
 

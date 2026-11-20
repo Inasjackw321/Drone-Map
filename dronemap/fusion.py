@@ -387,8 +387,8 @@ class Fusion:
                 self.on_all_clear(parsed.alerts_off, ref)
             # nationwide banners: official / reconnaissance channels, or a regional
             # channel warning about ballistic or Kinzhal launches
-            banners = [b for b in parsed.banners if ref.tier in ("official", "recon")
-                       or b[0] in ("threat:ballistic", "threat:kinzhal")]
+            banners = [b for b in parsed.banners if (ref.tier in ("official", "recon")
+                       or b[0] in ("threat:ballistic", "threat:kinzhal")) and len(ref.text) <= 220]
             if banners:
                 # one banner per message, most important kind first, original wording
                 kinds = [k for k, _ in banners]
