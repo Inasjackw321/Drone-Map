@@ -327,3 +327,10 @@ a { color: var(--accent); }
 .mk.sel::before { inset: -5px; }
 .mk.hot .mk-rot::before { width: 30px; height: 30px; }
 .banner.update { background: color-mix(in srgb, var(--accent) 16%, var(--panel)); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+
+/* ---------------------------------------------------------------- compact chrome over the map */
+.banner { padding: 6px 14px; font-size: 12.5px; }
+.filters { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; pointer-events: auto; padding-bottom: 4px; }
+.filters::-webkit-scrollbar { display: none; }
+.chip { padding: 3px 9px 3px 4px; font-size: 11.5px; gap: 4px; background: color-mix(in srgb, var(--panel) 88%, transparent); }
+.chip.opt { padding-left: 9px; }

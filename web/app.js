@@ -294,6 +294,7 @@
       list.unshift({ key: 'update:' + up.latest, kind: 'update', ts: now(), channel: 'drone-map',
         text: `A newer version (${up.latest}) is available. Close this window's terminal and double-click start.bat (or run: git pull).` });
     }
+    list.splice(2);                                           // never more than two strips over the map
     requestAnimationFrame(() => document.documentElement.style.setProperty('--banner-h', $('#banners').offsetHeight + 'px'));
     $('#banners').innerHTML = list.map(b => {
       const kind = b.kind === 'update' ? 'Update' : b.kind === 'aviation' ? 'Aviation' : (b.kind.startsWith('threat:') ? info(b.kind.slice(7)).short + ' threat' : 'Notice');
@@ -315,7 +316,7 @@
     for (const t of S.state?.tracks || []) if (t.status !== 'ended') counts[t.threat] = (counts[t.threat] || 0) + 1;
     const present = FAMILY_ORDER.filter(k => counts[k] || S.hidden.has(k));
     const chips = present.map(k => `<button class="chip ${S.hidden.has(k) ? 'off' : ''}" data-type="${k}" title="${esc(info(k).label)}" aria-pressed="${!S.hidden.has(k)}">
-      ${svg(k, null, 18)}${esc(info(k).short)} <span class="n">${counts[k] || 0}</span></button>`);
+      ${svg(k, null, 16)}${esc(info(k).short)} <span class="n">${counts[k] || 0}</span></button>`);
     const opt = (key, label, title) => `<button class="chip opt ${S[key] ? 'on' : ''}" data-opt="${key}" title="${title}">${label}</button>`;
     chips.push(opt('showUnconfirmed', 'Unconfirmed', 'Show reports that only aggregators have made'));
     chips.push(opt('showHistory', 'Paths', 'Show the path each target has flown'));
