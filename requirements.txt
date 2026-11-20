@@ -1,2 +1,7 @@
-python-telegram-bot==20.7
-telethon==1.34.0
+fastapi>=0.110
+uvicorn[standard]>=0.29
+httpx>=0.27
+beautifulsoup4>=4.12
+lxml>=5.0
+# optional: read channels through the Telegram API as well (see README)
+# telethon>=1.36
