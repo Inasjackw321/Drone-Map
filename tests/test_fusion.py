@@ -168,3 +168,17 @@ def test_clear_report_ends_nearby_track():
 def test_generic_missile_does_not_ride_ballistic_speed():
     snap = fuse([(0, "kpszsu", "Балістика на Київ"), (3, "kpszsu", "Ракета над Львовом")], 4)
     assert len(snap["tracks"]) == 2
+
+
+def test_russia_zones_layer_is_separate_and_expires():
+    CH["lpr1_treugolnik"] = {"tier": "russia", "regions": ["luhansk", "donetsk", "zaporizhzhia", "kherson", "crimea"]}
+    msgs = [(0, "lpr1_treugolnik", "Брянская область \nТревога по БПЛА"),
+            (1, "lpr1_treugolnik", "Клинцы \nБрянская область \nОпасность по БПЛА"),
+            (2, "lpr1_treugolnik", "Воронежская область \nОпасность по БПЛА")]
+    snap = fuse(msgs, 5)
+    assert not snap["tracks"] and not snap["alerts"]
+    assert {(z["name"], z["unit"]) for z in snap["ru_zones"]} == {
+        ("Брянская обл.", "ru_bry"), ("Klintsy", None), ("Воронежская обл.", "ru_vor")}
+    snap = fuse(msgs + [(4, "lpr1_treugolnik", "Брянская область \nОтбой опасности по БПЛА")], 5)
+    assert [z["name"] for z in snap["ru_zones"]] == ["Воронежская обл."]     # town inside Bryansk cleared too
+    assert fuse(msgs, 200)["ru_zones"] == []

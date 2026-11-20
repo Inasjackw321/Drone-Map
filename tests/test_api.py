@@ -16,7 +16,7 @@ def test_api_and_static_in_demo_mode():
         assert c.get("/api/state", headers={"If-None-Match": etag}).status_code == 304
 
         src = c.get("/api/sources").json()
-        assert [g["tier"] for g in src["groups"]] == ["official", "recon", "regional", "aggregator"]
+        assert [g["tier"] for g in src["groups"]] == ["official", "recon", "regional", "aggregator", "russia"]
         assert sum(len(g["channels"]) for g in src["groups"]) >= 80
 
         assert c.get("/api/health").json()["ok"]

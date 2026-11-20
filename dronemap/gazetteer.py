@@ -26,14 +26,14 @@ DATA = r"""
 vinnytsia; obl_vinnytsia; Vinnytsia region; 48.95; 28.75; R; вінниччин~,вінничин~,вінницьк~ обл*,винниччин~,винничин~,винницк~ обл*
 volyn; obl_volyn; Volyn region; 51.20; 25.00; R; волин~,волинськ~ обл*,волын~,волынск~ обл*
 dnipro; obl_dnipro; Dnipropetrovsk region; 48.35; 34.95; R; дніпропетровщин~,дніпровщин~,січеславщин~,дніпропетровськ~ обл*,дніпровськ~ обл*,днепропетровщин~,днепропетровск~ обл*,днепровщин~
-donetsk; obl_donetsk; Donetsk region; 48.50; 37.70; R; донеччин~,донецьк~ обл*,донетчин~,донецк~ обл*,донбас~
+donetsk; obl_donetsk; Donetsk region; 48.50; 37.70; R; днр,донеччин~,донецьк~ обл*,донетчин~,донецк~ обл*,донбас~
 zhytomyr; obl_zhytomyr; Zhytomyr region; 50.50; 28.40; R; житомирщин~,житомирськ~ обл*,житомирск~ обл*
 zakarpattia; obl_zakarpattia; Zakarpattia region; 48.40; 23.30; R; закарпатт~,закарпатськ~ обл*,закарпать~,закарпатск~ обл*
 zaporizhzhia; obl_zaporizhzhia; Zaporizhzhia region; 47.70; 35.60; R; запоріжчин~,запорізьк~ обл*,запорожск~ обл*
 ivano_frankivsk; obl_if; Ivano-Frankivsk region; 48.75; 24.60; R; івано-франківщин~,франківщин~,прикарпатт~,/івано-?\s?франківськ\w*\s+обл\w*,/ивано-?\s?франковск\w*\s+обл\w*,прикарпать~
 kyiv; obl_kyiv; Kyiv region; 50.30; 30.85; R; київщин~,київськ~ обл*,киевщин~,киевск~ обл*
 kirovohrad; obl_kirovohrad; Kirovohrad region; 48.45; 32.00; R; кіровоградщин~,кропивниччин~,кіровоградськ~ обл*,кировоградщин~,кировоградск~ обл*
-luhansk; obl_luhansk; Luhansk region; 48.90; 39.00; R; луганщин~,луганськ~ обл*,луганск~ обл*
+luhansk; obl_luhansk; Luhansk region; 48.90; 39.00; R; лнр,луганщин~,луганськ~ обл*,луганск~ обл*
 lviv; obl_lviv; Lviv region; 49.80; 24.00; R; львівщин~,львівськ~ обл*,львовщин~,львовск~ обл*
 mykolaiv; obl_mykolaiv; Mykolaiv region; 47.35; 31.80; R; миколаївщин~,миколаївськ~ обл*,николаевщин~,николаевск~ обл*
 odesa; obl_odesa; Odesa region; 46.90; 30.20; R; одещин~,одеськ~ обл*,одесщин~,одесск~ обл*
@@ -289,7 +289,7 @@ odesa; bilhorod_dnistrovskyi; Bilhorod-Dnistrovskyi; 46.191; 30.334; T; /біл�
 odesa; chornomorsk; Chornomorsk; 46.300; 30.655; T; чорноморськ~,черноморск~,іллічівськ~
 odesa; pivdenne; Pivdenne (Yuzhne); 46.623; 31.101; T; южне,южного,южному
 odesa; zatoka; Zatoka; 46.071; 30.465; T; затока,затоку,затоки,затоці,затокою
-odesa; podilsk; Podilsk; 47.743; 29.533; T; подільськ,подільська,подільську,подольск~,/подільськ(?:ий|ого|ому)\s+район\w*
+odesa; podilsk; Podilsk; 47.743; 29.533; T; подільськ,подільська,подільську,подольск~
 odesa; balta; Balta; 47.938; 29.619; T; балт~
 odesa; rozdilna; Rozdilna; 46.849; 30.078; T; роздільн~,раздельн~
 odesa; berezivka; Berezivka; 47.204; 30.913; T; березівк~,березівц~,березовк~
@@ -541,26 +541,121 @@ crimea; hvardiiske; Hvardiiske; 45.115; 34.017; F; гвардійськ~,гва�
 crimea; belbek; Belbek; 44.690; 33.580; F; бельбек~
 crimea; tarkhankut; Cape Tarkhankut; 45.350; 32.500; W; тарханкут~
 crimea; armiansk; Armiansk; 46.106; 33.692; T; армянськ~
-# ---------------------------------------------------------------- launch areas (Russia / Belarus / far)
-ru_belgorod; belgorod; Belgorod; 50.597; 36.588; F; бєлгород~,белгород~,білгород~,бєлгородщин~,белгородчин~,белгородщин~,/бєлгородськ\w*\s+обл\w*,/белгородск\w*\s+обл\w*
-ru_belgorod; shebekino; Shebekino; 50.410; 36.890; F; шебекін~,шебекин~
-ru_belgorod; graivoron; Graivoron; 50.480; 35.680; F; грайворон~
-ru_kursk; kursk; Kursk; 51.730; 36.193; F; курськ~,курщин~,курск~
-ru_kursk; sudzha; Sudzha; 51.190; 35.270; F; судж~
-ru_bryansk; bryansk; Bryansk; 53.243; 34.364; F; брянськ~,брянщин~,брянск~
-ru_other; oryol; Oryol region; 52.970; 36.070; F; орловщин~
-ru_other; shatalovo; Shatalovo; 54.330; 32.470; F; шаталов~
-ru_other; primorsko_akhtarsk; Primorsko-Akhtarsk; 46.050; 38.170; F; /приморсько-?\s?ахтарськ\w*,/приморско-?\s?ахтарск\w*
-ru_other; voronezh; Voronezh; 51.670; 39.200; F; воронеж~
-ru_other; millerovo; Millerovo; 48.920; 40.400; F; міллеров~,миллеров~
-ru_other; taganrog; Taganrog; 47.210; 38.940; F; таганрог~
-ru_other; rostov; Rostov-on-Don; 47.235; 39.700; F; ростов~
-ru_other; yeysk; Yeysk; 46.710; 38.270; F; єйськ~,ейск~
-ru_other; novorossiysk; Novorossiysk; 44.720; 37.770; F; новоросійськ~,новороссийск~
-ru_other; morozovsk; Morozovsk; 48.350; 41.830; F; морозовськ~,морозовск~
-ru_other; engels; Engels; 51.480; 46.200; F; енгельс~,энгельс~
-ru_other; caspian; Caspian Sea; 45.000; 49.000; F; каспі~,каспи~
-ru_other; belarus; Belarus; 51.900; 28.000; F; білорус~,беларус~,бєларус~
+# ---------------------------------------------------------------- Russia: cities and border districts (regions come from data/regions.json)
+ru_bel; belgorod; Belgorod; 50.597; 36.588; F; бєлгород~,белгород~,білгород~
+ru_bel; shebekino; Shebekino; 50.410; 36.890; F; шебекін~,шебекин~,/шебекинск\w*\s+(?:округ|район)\w*
+ru_bel; graivoron; Graivoron; 50.480; 35.680; F; грайворон~
+ru_bel; valuyki; Valuyki; 50.210; 38.100; F; валуйк~,валуйок,/валуйск\w*\s+(?:округ|район)\w*
+ru_bel; stroitel; Yakovlevsky district; 50.790; 36.480; F; /яковлевск\w*\s+(?:округ|район)\w*,строител~
+ru_bel; krasnaya_yaruga; Krasnaya Yaruga; 50.700; 35.710; F; /краснояружск\w*\s+(?:округ|район)\w*,/красн\w*\s+яруг\w*
+ru_bel; ivnya; Ivnya; 51.080; 36.130; F; /ивнянск\w*\s+(?:округ|район)\w*,ивн~
+ru_bel; borisovka; Borisovka; 50.600; 36.010; F; /борисовск\w*\s+(?:округ|район)\w*,борисовк~
+ru_bel; rakitnoye; Rakitnoye; 50.840; 35.860; F; /ракитянск\w*\s+(?:округ|район)\w*
+ru_bel; belgorod_district; Belgorodsky district; 50.560; 36.480; F; /белгородск\w*\s+(?:округ|район)\w*
+ru_bel; volokonovka; Volokonovka; 50.480; 37.860; F; волоконовк~,/волоконовск\w*\s+(?:округ|район)\w*
+ru_bel; gubkin; Gubkin; 51.280; 37.540; F; губкин,губкине,губкина
+ru_bel; stary_oskol; Stary Oskol; 51.300; 37.840; F; /стар\w*\s+оскол\w*
+ru_bel; novy_oskol; Novy Oskol; 50.760; 37.870; F; /нов\w*\s+оскол\w*
+ru_bel; alekseyevka; Alekseyevka; 50.630; 38.690; F; /алексеевск\w*\s+(?:округ|район)\w*
+ru_bel; korocha; Korocha; 50.810; 37.190; F; короч~
+ru_bel; prokhorovka; Prokhorovka; 51.040; 36.730; F; прохоровк~
+ru_krs; kursk; Kursk; 51.730; 36.193; F; курськ~,курск~
+ru_krs; sudzha; Sudzha; 51.190; 35.270; F; судж~
+ru_krs; rylsk; Rylsk; 51.570; 34.680; F; рыльск~,рильськ~
+ru_krs; glushkovo; Glushkovo; 51.340; 34.650; F; глушков~
+ru_krs; korenevo; Korenevo; 51.400; 34.910; F; коренев~
+ru_krs; lgov; Lgov; 51.660; 35.270; F; льгов~
+ru_krs; kurchatov; Kurchatov; 51.660; 35.650; F; курчатов~
+ru_krs; zheleznogorsk; Zheleznogorsk; 52.340; 35.350; F; железногорск~
+ru_krs; oboyan; Oboyan; 51.210; 36.270; F; обоян~
+ru_krs; khomutovka; Khomutovka; 51.920; 34.550; F; хомутовк~
+ru_bry; bryansk; Bryansk; 53.243; 34.364; F; брянськ~,брянск~
+ru_bry; klintsy; Klintsy; 52.750; 32.240; F; клинц~,клинцы
+ru_bry; klimovo; Klimovo; 52.380; 32.190; F; климов~
+ru_bry; starodub; Starodub; 52.590; 32.760; F; стародуб~
+ru_bry; pogar; Pogar; 52.550; 33.260; F; погар~
+ru_bry; trubchevsk; Trubchevsk; 52.580; 33.770; F; трубчевск~
+ru_bry; suzemka; Suzemka; 52.320; 34.080; F; суземк~
+ru_bry; sevsk; Sevsk; 52.150; 34.490; F; севск~
+ru_bry; novozybkov; Novozybkov; 52.540; 31.930; F; новозыбков~
+ru_bry; unecha; Unecha; 52.850; 32.680; F; унеч~
+ru_bry; pochep; Pochep; 52.930; 33.450; F; почеп~
+ru_bry; zlynka; Zlynka; 52.430; 31.730; F; злынк~
+ru_vor; voronezh; Voronezh; 51.670; 39.200; F; воронеж~
+ru_vor; rossosh; Rossosh; 50.200; 39.570; F; россош~
+ru_vor; boguchar; Boguchar; 49.940; 40.550; F; богучар~
+ru_vor; liski; Liski; 50.980; 39.500; F; лиски,лисках
+ru_ros; rostov; Rostov-on-Don; 47.235; 39.700; F; ростов~
+ru_ros; taganrog; Taganrog; 47.210; 38.940; F; таганрог~
+ru_ros; millerovo; Millerovo; 48.920; 40.400; F; міллеров~,миллеров~
+ru_ros; morozovsk; Morozovsk; 48.350; 41.830; F; морозовськ~,морозовск~
+ru_ros; novoshakhtinsk; Novoshakhtinsk; 47.760; 39.930; F; новошахтинск~
+ru_ros; kamensk; Kamensk-Shakhtinsky; 48.320; 40.260; F; /каменск\w*-?\s?шахтинск\w*
+ru_ros; azov; Azov; 47.110; 39.420; F; азов,азова,азове
+ru_ros; shakhty; Shakhty; 47.710; 40.210; F; шахты,шахтах
+ru_ros; novocherkassk; Novocherkassk; 47.420; 40.090; F; новочеркасск~
+ru_ros; volgodonsk; Volgodonsk; 47.510; 42.150; F; волгодонск~
+ru_kda; krasnodar; Krasnodar; 45.040; 38.980; F; краснодар,краснодара,краснодаре
+ru_kda; novorossiysk; Novorossiysk; 44.720; 37.770; F; новоросійськ~,новороссийск~
+ru_kda; tuapse; Tuapse; 44.100; 39.080; F; туапсе
+ru_kda; sochi; Sochi; 43.600; 39.730; F; сочи
+ru_kda; anapa; Anapa; 44.890; 37.320; F; анап~
+ru_kda; temryuk; Temryuk; 45.270; 37.380; F; темрюк~
+ru_kda; yeysk; Yeysk; 46.710; 38.270; F; єйськ~,ейск~
+ru_kda; primorsko_akhtarsk; Primorsko-Akhtarsk; 46.050; 38.170; F; /приморсько-?\s?ахтарськ\w*,/приморско-?\s?ахтарск\w*,ахтарск~
+ru_kda; armavir; Armavir; 45.000; 41.120; F; армавир~
+ru_kda; tikhoretsk; Tikhoretsk; 45.850; 40.120; F; тихорецк~
+ru_kda; slavyansk_kuban; Slavyansk-na-Kubani; 45.260; 38.120; F; /славянск\w*-?\s?на-?\s?кубани
+ru_kda; krymsk; Krymsk; 44.930; 37.990; F; крымск,крымске,крымска
+ru_orl; oryol; Oryol; 52.970; 36.060; F; орел,орла,орле,орлом
+ru_tul; tula; Tula; 54.190; 37.620; F; тула,тулу,туле,тулы
+ru_tul; novomoskovsk_ru; Novomoskovsk (Tula); 54.010; 38.290; F; /новомосковск(?:е|а|у)?(?=\W+(?:тульск|тула))
+ru_klu; kaluga; Kaluga; 54.510; 36.260; F; калуг~
+ru_mow; moscow; Moscow; 55.760; 37.620; F; москв~
+ru_lip; lipetsk; Lipetsk; 52.610; 39.590; F; липецк,липецке,липецка
+ru_tam; tambov; Tambov; 52.720; 41.450; F; тамбов,тамбове,тамбова
+ru_rya; ryazan; Ryazan; 54.630; 39.740; F; рязан~
+ru_smo; smolensk; Smolensk; 54.780; 32.050; F; смоленськ~,смоленск,смоленске,смоленска
+ru_smo; shatalovo; Shatalovo; 54.330; 32.470; F; шаталов~
+ru_sar; engels; Engels; 51.480; 46.120; F; енгельс~,энгельс~
+ru_sar; saratov; Saratov; 51.530; 46.030; F; саратов,саратове,саратова
+ru_vgg; volgograd; Volgograd; 48.710; 44.510; F; волгоград,волгограде,волгограда
+ru_sta; stavropol; Stavropol; 45.040; 41.970; F; ставрополь,ставрополе,ставрополя
+ru_tve; tver; Tver; 56.860; 35.900; F; твер,твери,тверь
+ru_yar; yaroslavl; Yaroslavl; 57.630; 39.870; F; ярославл~,ярославль
+ru_vlg; cherepovets; Cherepovets; 59.130; 37.900; F; череповц~,череповец
+ru_len; kirishi; Kirishi; 59.450; 32.020; F; кириш~
+ru_len; ust_luga; Ust-Luga; 59.660; 28.270; F; /усть-?\s?луг\w*
+ru_ast; caspian; Caspian Sea; 45.000; 49.000; F; каспі~,каспи~
+by; belarus; Belarus; 51.900; 28.000; F; білорус~,беларус~,бєларус~
+# ---------------------------------------------------------------- occupied towns in their Russian spelling (Ukrainian territory)
+donetsk; horlivka; Horlivka; 48.300; 38.050; T; горлівк~,горлівц~,горловк~
+donetsk; makiivka; Makiivka; 48.050; 37.960; T; макіївк~,макіївц~,макеевк~
+donetsk; yenakiieve; Yenakiieve; 48.230; 38.210; T; єнакієв~,енакиев~
+donetsk; khartsyzk; Khartsyzk; 48.040; 38.150; T; харцизьк~,харцызск~
+donetsk; ilovaisk; Ilovaisk; 47.920; 38.200; T; іловайськ~,иловайск~
+donetsk; mospyne; Mospyne; 47.880; 38.060; T; моспин~
+donetsk; novoazovsk; Novoazovsk; 47.110; 38.080; T; новоазовськ~,новоазовск~
+donetsk; volnovakha; Volnovakha; 47.600; 37.500; T; волновах~
+donetsk; yasynuvata; Yasynuvata; 48.130; 37.860; T; ясинуват~
+donetsk; shakhtarsk; Shakhtarsk; 48.050; 38.450; T; шахтарськ~,шахтерск~
+donetsk; debaltseve; Debaltseve; 48.340; 38.400; T; дебальцев~
+donetsk; snizhne; Snizhne; 48.030; 38.770; T; сніжн~,снежное,снежном,снежного
+donetsk; dokuchaievsk; Dokuchaievsk; 47.750; 37.680; T; докучаєвськ~,докучаевск~
+luhansk; alchevsk; Alchevsk; 48.470; 38.800; T; алчевськ~,алчевск~
+luhansk; kadiivka; Kadiivka; 48.570; 38.650; T; кадіївк~,стаханов~
+luhansk; rovenky; Rovenky; 48.080; 39.370; T; ровеньк~,ровеньки
+luhansk; dovzhansk; Dovzhansk; 48.080; 39.650; T; довжанськ~,свердловск~
+luhansk; antratsyt; Antratsyt; 48.120; 39.090; T; антрацит~
+luhansk; khrustalnyi; Khrustalnyi; 48.140; 38.940; T; /красн\w*\s+луч\w*,хрустальн~
+luhansk; shchastia; Shchastia; 48.740; 39.230; T; щаст~,счасть~
+luhansk; sorokyne; Sorokyne; 48.300; 39.740; T; краснодон~,сорокин~
+luhansk; brianka; Brianka; 48.510; 38.640; T; брянк~
+kherson; henichesk; Henichesk; 46.170; 34.800; T; генічеськ~,геническ~
+kherson; kalanchak; Kalanchak; 46.250; 33.290; T; каланчак~
+kherson; chaplynka; Chaplynka; 46.370; 33.530; T; чаплинк~
+zaporizhzhia; prymorsk; Prymorsk; 46.730; 36.350; T; приморськ,приморська,приморську,приморск,приморске,приморска
+zaporizhzhia; pryazovske; Pryazovske; 46.730; 35.650; T; приазовськ~,приазовск~
 """
 
 KIND_PROMINENCE = {"C": 3, "T": 2, "D": 2, "F": 2, "R": 1, "W": 1, "V": 1, "A": 2}
@@ -688,6 +783,32 @@ def _raion_tokens(name: str) -> list[str]:
     return toks
 
 
+RU_EXTRA = {
+    "ru_bel": "бєлгородщин~,белгородчин~,белгородщин~,бєлгородськ~ обл*",
+    "ru_krs": "курщин~", "ru_bry": "брянщин~", "ru_vor": "воронежчин~,воронежщин~,воронезьк~ обл*",
+    "ru_ros": "ростовщин~", "ru_kda": "кубан~", "ru_mos": "подмосков~,підмосков~", "ru_orl": "орловщин~",
+    "ru_klu": "калужчин~,калужин~", "ru_smo": "смоленщин~", "ru_mow": "", "ru_spe": "/санкт-?\\s?петербург\\w*,петербург~,питер~",
+    "ru_ta": "татарстан~", "ru_ba": "башкир~,башкортостан~", "ru_kl": "калмык~", "ru_mo": "мордов~", "ru_cu": "чуваш~",
+    "ru_ad": "адыге~,адиге~", "ru_kc": "карачаево-черкес~", "ru_kb": "кабардино-балкар~", "ru_se": "/северн\\w*\\s+осети\\w*",
+    "ru_ce": "чечн~,чеченск~", "ru_da": "дагестан~", "ru_in": "ингушет~", "ru_me": "/мари\\w*\\s+эл", "ru_kr": "карели~",
+    "ru_ko": "/республик\\w*\\s+коми", "ru_ud": "удмурт~",
+}
+
+
+def _russia_tokens(key: str, name: str) -> list[str]:
+    """'Брянская обл.' -> брянская/брянской/брянську область...; 'Краснодарский край' -> краснодарск~ кра*."""
+    n = name.lower()
+    toks = [t for t in RU_EXTRA.get(key, "").split(",") if t]
+    m = re.match(r"^([а-яё\-]+?)(?:ая|ий|кий)?\s+(обл\.|край)$", n)
+    if m:
+        adj = n.split()[0]
+        stem = re.sub(r"(ая|ий)$", "", adj)                 # брянск / краснодарск
+        kind = "обл*" if n.endswith("обл.") else "кра*"
+        ua = stem.replace("ск", "ськ").replace("цк", "цьк")
+        toks += [f"{stem}~ {kind}", f"{ua}~ {kind}"]
+    return toks
+
+
 class Gazetteer:
     def __init__(self, data: str = DATA):
         self.places: dict[str, Place] = {}
@@ -720,6 +841,13 @@ class Gazetteer:
                 place = Place("r" + r["id"], f'{r["name_en"]} raion', r["label"][1], r["label"][0], r["oblast"], "A")
                 self.places[place.key] = place
                 self.raions[r["id"]] = place
+                self._add(place, toks)
+
+            for r in idx["russia"]:
+                toks = _russia_tokens(r["key"], r["name"])
+                place = Place("reg_" + r["key"], r["name"], r["label"][1], r["label"][0], r["key"], "R")
+                self.places[place.key] = place
+                self.oblast_center[r["key"]] = place
                 self._add(place, toks)
 
     def _add(self, place: "Place", toks: list[str]) -> None:

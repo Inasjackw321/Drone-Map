@@ -83,7 +83,7 @@ def test_povz_is_not_origin():
 
 def test_origin_and_destination():
     s = one("Реактивний шахед з Бєлгородщини на Харків", ("kharkiv",))
-    assert label(s.origin) == "belgorod" and label(s.dest) == "kharkiv" and s.pos is None
+    assert label(s.origin) == "reg_ru_bel" and label(s.dest) == "kharkiv" and s.pos is None
 
 
 def test_arrow_route():
@@ -307,3 +307,33 @@ def test_launch_site_list_is_a_notice():
 def test_city_adjective_is_not_a_village():
     r = parse_message("Шахед на Харківське шосе", ("kharkiv",))
     assert all(s.dest is None or s.dest.place.name != "Kharkivske" for s in r.sightings)
+
+
+# ------------------------------------------------------------------ Russia-side channel
+
+RU = ["luhansk", "donetsk", "zaporizhzhia", "kherson", "crimea"]
+
+
+def test_russia_danger_zones():
+    r = parse_message("Клинцы \nБрянская область \nОпасность по БПЛА сохраняется", RU, "russia")
+    assert [(z.place.key, k) for z, k in r.ru_zones] == [("klintsy", "drone")] and not r.sightings
+    r = parse_message("Брянская область \nТревога по БПЛА сохраняется", RU, "russia")
+    assert [z.place.key for z, _ in r.ru_zones] == ["reg_ru_bry"]
+    r = parse_message("Моспино, Иловайск и близлежащие \nОпасность по БПЛА \nДНР", RU, "russia")
+    assert [z.place.key for z, _ in r.ru_zones] == ["mospyne", "ilovaisk"]
+    r = parse_message("Бердянский район \nОпасность по БПЛА \nЗапорожская область РФ", RU, "russia")
+    assert [z.place.key for z, _ in r.ru_zones] == ["rUA2302"]
+
+
+def test_russia_all_clear_and_offset():
+    r = parse_message("Воронежская область \nОрловская область \nОтбой опасности по БПЛА", RU, "russia")
+    assert [z.place.key for z in r.ru_clear] == ["reg_ru_vor", "reg_ru_orl"] and not r.ru_zones
+    r = parse_message("Юг Ростовской области \nОпасность по БПЛА", RU, "russia")
+    z = r.ru_zones[0][0]
+    assert z.place.key == "reg_ru_ros" and z.lat < z.place.lat
+
+
+def test_russia_missile_danger_and_propaganda():
+    assert parse_message("Ракетная опасность. Белгород", RU, "russia").ru_zones[0][1] == "missile"
+    long_post = "Укровские кастрюли так радовались " * 12
+    assert not parse_message(long_post, RU, "russia").relevant

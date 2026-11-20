@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from .gazetteer import GAZETTEER, NEIGHBORS, Place, destination
+from .gazetteer import GAZETTEER, NEIGHBORS, UKRAINE_OBLASTS, Place, destination
 from .settlements import SETTLEMENTS
 
 # --------------------------------------------------------------------------- threats
@@ -212,11 +212,13 @@ class ParsedMessage:
     clear_places: list[PlaceRef] = field(default_factory=list)
     clear_oblasts: set[str] = field(default_factory=set)
     bare_places: list[PlaceRef] = field(default_factory=list)
+    ru_zones: list[tuple[PlaceRef, str]] = field(default_factory=list)   # (place, drone|missile) from Russian sources
+    ru_clear: list[PlaceRef] = field(default_factory=list)
 
     @property
     def relevant(self) -> bool:
         return bool(self.sightings or self.events or self.alerts_on or self.alerts_off or self.banners
-                    or self.clear_places or self.clear_oblasts)
+                    or self.clear_places or self.clear_oblasts or self.ru_zones or self.ru_clear)
 
 
 # --------------------------------------------------------------------------- helpers
@@ -428,7 +430,51 @@ def alert_level(text: str) -> str:
 
 
 def _ukr(oblast: str) -> bool:
-    return not oblast.startswith(("ru_", "sea"))
+    return oblast in UKRAINE_OBLASTS
+
+
+# --------------------------------------------------------------------------- Russian-side sources
+
+RU_DANGER_RE = re.compile(_W + r"(?:опасност\w*|тревог\w*|угроз\w*|атак\w*|беспилотн\w*\s+опасност\w*|налет\w*)")
+RU_CLEAR_RE = re.compile(_W + r"(?:отбой|отбоя|отменен\w*|снят\w*)")
+RU_MISSILE_RE = re.compile(_W + r"(?:ракетн\w*|ракет\w*)")
+OFFSET_BARE = re.compile(rf"^\s*(?P<dir>{DIR_WORD})\s*$")
+
+
+def parse_russia(text: str, prefer_oblasts) -> ParsedMessage:
+    """Russian-side warnings ("Брянская область / Опасность по БПЛА", "Отбой опасности по БПЛА").
+
+    They describe areas where Ukrainian drones or missiles are expected over Russia and the occupied
+    territory. They become danger zones on a separate layer and never feed Ukrainian targets or alerts.
+    """
+    res = ParsedMessage()
+    norm = normalize(text)
+    if len(norm) > 300:                                # commentary / propaganda posts
+        return res
+    refs = []
+    for seg in split_segments(norm):
+        for r in locate(seg, prefer_oblasts, prefer_oblasts, {normalize(w) for w in CAPS_RE.findall(text)}):
+            prefix = seg[:r.start].strip()
+            m = OFFSET_BARE.match(prefix)                # "Юг Ростовской области"
+            deg = dir_to_deg(m.group("dir")) if m else None
+            if deg is not None and r.place.is_region:
+                r.lat, r.lon = destination(r.place.lat, r.place.lon, deg, 120 if r.place.kind == "R" else 25)
+                r.label = _offset_label(r.place, deg)
+            refs.append(r)
+    if not refs:
+        return res
+    res.places = list(dict.fromkeys(r.label for r in refs))
+    # a region qualifier after a town or district ("Клинцы / Брянская область") only says where it is
+    points = [r for r in refs if r.place.kind != "R"]
+    zones = points if points else refs
+    if RU_CLEAR_RE.search(norm):
+        res.ru_clear = zones
+        return res
+    kind = "missile" if RU_MISSILE_RE.search(norm) and not find_threats(norm.replace("ракетн", "")) else "drone"
+    # this channel posts bare place names while a danger is on; a danger word is not required
+    res.ru_zones = [(r, kind) for r in zones]
+    res.threats = ["missile" if kind == "missile" else "uav"]
+    return res
 
 
 # --------------------------------------------------------------------------- main entry
@@ -438,6 +484,8 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
     if not text or not text.strip():
         return res
     prefer_oblasts = list(prefer_oblasts)
+    if tier == "russia":
+        return parse_russia(text, prefer_oblasts)
     norm = normalize(text)
     if len(norm) > 1200 or SUMMARY_RE.search(norm):
         res.summary = True

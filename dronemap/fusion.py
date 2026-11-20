@@ -23,6 +23,7 @@ STALE_AFTER = {"drone": 30, "missile": 15, "kab": 8, "ballistic": 6, "kinzhal": 
 DROP_AFTER = {k: v * 2.5 for k, v in STALE_AFTER.items()}
 ENDED_VISIBLE_MIN = 10
 EVENT_TTL_MIN = {"explosion": 45, "kill": 30, "threat": 20}
+RU_ZONE_TTL_MIN = 90
 BANNER_TTL_MIN = 40
 ALERT_TTL_MIN = 6 * 60
 
@@ -154,6 +155,7 @@ class Fusion:
         self.banners: list[dict] = []
         self.feed: list[dict] = []
         self._last_threat: dict[str, tuple[str, float]] = {}
+        self.ru_zones: dict[str, dict] = {}
 
     # ------------------------------------------------------------------ helpers
     def _tier(self, channel: str) -> str:
@@ -353,7 +355,37 @@ class Fusion:
             if hit:
                 t.ended, t.ended_ts = "reported clear", ref.ts
 
+    def on_russia(self, ref: MsgRef, parsed: ParsedMessage) -> None:
+        """Danger zones over Russia / occupied territory reported by Russian-side channels."""
+        for r, kind in parsed.ru_zones:
+            p = r.place
+            if p.kind == "A":
+                unit = p.key[1:]                       # Ukrainian raion id -> raion polygon
+            elif p.kind == "R":
+                unit = p.oblast                        # region key -> region polygon
+            else:
+                unit = None                            # town -> circle
+            key = r.label
+            prev = self.ru_zones.get(key)
+            self.ru_zones[key] = {
+                "key": key, "name": r.label, "kind": kind, "unit": unit, "oblast": p.oblast,
+                "lat": round(r.lat, 4), "lon": round(r.lon, 4), "precision": "point" if unit is None else "area",
+                "since": prev["since"] if prev else ref.ts, "last_ts": ref.ts, "channel": ref.channel,
+                "text": ref.text[:200],
+            }
+        for r in parsed.ru_clear:
+            for k, z in list(self.ru_zones.items()):
+                if k == r.label or (r.place.kind == "R" and z["oblast"] == r.place.oblast):
+                    del self.ru_zones[k]
+
     def process(self, ref: MsgRef, parsed: ParsedMessage) -> None:
+        if ref.tier == "russia":
+            self.on_russia(ref, parsed)
+            if parsed.relevant:
+                self.feed.append({"channel": ref.channel, "id": ref.msg_id, "ts": ref.ts, "tier": ref.tier,
+                                  "text": ref.text[:500], "threats": parsed.threats, "places": parsed.places[:8],
+                                  "kinds": ["danger over Russia" if parsed.ru_zones else "all clear (Russia)"]})
+            return
         used: set[str] = set()
         sightings = list(parsed.sightings)
         # terse follow-up ("Гостомель") continues what this channel reported a few minutes ago
@@ -495,8 +527,10 @@ class Fusion:
             st = stats.setdefault(t["threat"], {"tracks": 0, "objects": 0})
             st["tracks"] += 1
             st["objects"] += t["count"] or 1
+        ru_zones = sorted((z for z in self.ru_zones.values() if now - z["last_ts"] < RU_ZONE_TTL_MIN * 60),
+                          key=lambda z: -z["last_ts"])
         return {
-            "tracks": tracks_out, "events": events, "alerts": alerts, "banners": banners,
+            "tracks": tracks_out, "events": events, "alerts": alerts, "banners": banners, "ru_zones": ru_zones,
             "feed": self.feed[-150:][::-1], "stats": stats,
         }
 
