@@ -1,85 +1,145 @@
-# Drone Tracker
+# Drone Map
 
-Live map showing drone locations from multiple Telegram channels.
+A live map of drones and missiles over Ukraine, built by reading the public Telegram monitoring
+channels (Air Force, reconnaissance channels, regional observers and aggregators) and fusing their
+reports into tracks.
 
-## Live Map
+- **Every threat type has its own icon:** Shahed, jet Shahed (Geran-3), Gerbera decoy, recon UAV
+  (Orlan/ZALA), Lancet, Molniya, FPV, unknown UAV, cruise missile, ballistic missile, Kinzhal,
+  unknown missile, guided bomb (KAB). Icons rotate to the heading.
+- **Tracks:** reports from different channels are chained into one track per group. Solid lines
+  show the flown path, and dotted lines show the reported destination or heading.
+- **Reliability:** each track gets a confidence score from the channels that reported it. Official
+  sources weigh most, then reconnaissance, then regional observers. Aggregators only count when they
+  agree with someone else, so a target seen only by aggregators is shown faded with a "?".
+  Impossible jumps (speed and heading checks), stale targets and shot-down targets are handled.
+- **Events:** explosions, shot-down reports, threat areas (e.g. "ballistic threat for Kharkiv
+  region"), air-raid alerts per region and nationwide notices (MiG-31K airborne etc.).
+- **App:** installable PWA (desktop and phone), works offline with the last known picture, with an
+  optional "near me" warning when a confirmed target is close to or heading for your location.
 
-https://inasjackw321.github.io/Drone-Map/
+## Run it
 
-## Channels Monitored
-
-- @kpszsu
-- @air_alert_ua
-- @ukraine_now_english
-- @nexta_live
-- @uniannet
-- @tchuky
-
-## Setup
-
-### 1. Get Telegram API Credentials
-
-1. Go to https://my.telegram.org/apps
-2. Create app
-3. Get API_ID and API_HASH
-
-### 2. Install Dependencies
+Needs Python 3.10+.
 
 ```bash
-pip install -r scraper-requirements.txt
+pip install -r requirements.txt
 ```
-
-### 3. Run Scraper
 
 ```bash
-python telegram-scraper.py
+python run.py
 ```
 
-Follow prompts:
-- Enter API_ID and API_HASH
-- Choose QR code login
-- Add all channels (paste each one):
-  - `kpszsu`
-  - `air_alert_ua`
-  - `ukraine_now_english`
-  - `nexta_live`
-  - `uniannet`
-  - `tchuky`
-- Press [S] to scrape all
+Open http://localhost:8000. The first full round of channel reads takes about a minute, and
+the last 3–4 hours of posts are loaded on start.
 
-### 4. Process Data
+To try it without Telegram access, run the built-in scripted scenario:
 
 ```bash
-python process_scraped_data.py
+python run.py --demo
 ```
 
-Processes all channels and extracts drone coordinates.
+### Install as an app
 
-### 5. Auto-run
+Open the page in Chrome/Edge (desktop or Android) and press **Install app** in the top bar, or use
+the browser menu → *Install*. On iPhone: Share → *Add to Home Screen*. For use outside your own
+computer, run it on a server behind HTTPS (service workers and geolocation need HTTPS).
+
+### Docker
 
 ```bash
-while true; do
-    python telegram-scraper.py
-    python process_scraped_data.py
-    sleep 300
-done
+docker compose up -d
 ```
 
-## How It Works
+## How it works
 
-1. Scraper downloads messages from all channels
-2. Processor extracts coordinates from messages
-3. Updates drone_data.json with new sightings
-4. Auto-commits to GitHub
-5. GitHub Pages map updates automatically
-
-## Adding More Channels
-
-Edit `process_scraped_data.py` and add to CHANNELS list:
-
-```python
-CHANNELS = [
-    'kpszsu',
-    'your_channel_here'
-]
 ```
+Telegram channels ──► scraper (t.me/s/<channel> web preview, or Telethon)
+                         │  raw posts → SQLite (data/dronemap.db)
+                         ▼
+                      parser  (dronemap/parser.py)
+                         │  threat type, count, position, destination, origin, heading,
+                         │  explosions, shot down, alerts, notices
+                         ▼
+                      fusion  (dronemap/fusion.py)
+                         │  replays the last 4 h in time order → tracks + confidence
+                         ▼
+                      /api/state ──► web app (web/)
+```
+
+* **Sources**: `dronemap/channels.json` lists every channel with its trust tier and region. Edit it
+  to add or remove channels. The region tells the parser which villages a channel is likely to
+  mean.
+* **Places**: `dronemap/gazetteer.py` is a curated list of about 500 cities, towns, regions, seas
+  and launch areas, with Ukrainian and Russian spellings and case forms.
+  `dronemap/data/settlements.tsv.gz` adds 32,000 villages from GeoNames. A village only counts
+  when it is capitalised, introduced by a location word ("курсом на", "над", "повз", "→") and
+  lies in the channel's region (or a region named in the same post). Rebuild it with
+  `scripts/build_settlements.py`.
+* **Replay**: the picture is rebuilt from the stored posts every few seconds. That makes it
+  deterministic and robust: posts that arrive late or out of order, edited posts and restarts all
+  give the same result.
+* **Scraper**: each channel is polled on its own schedule (official 20 s, regional 40 s,
+  aggregators 75 s), with jitter, a global rate limit, exponential back-off and Retry-After
+  handling. Channel health is visible in the **Sources** tab.
+
+### Optional: Telegram API (Telethon)
+
+A few channels disable the web preview (shown as "no web preview" in the Sources tab). To read
+those too, create an API app at https://my.telegram.org, then:
+
+```bash
+pip install telethon
+```
+
+```bash
+TG_API_ID=12345 TG_API_HASH=abc123 python -m dronemap.telethon_login
+```
+
+```bash
+TG_API_ID=12345 TG_API_HASH=abc123 python run.py --source both
+```
+
+`--source both` uses the web preview for everything and the API for channels without a preview;
+`--source telethon` uses the API for everything.
+
+### Settings (environment variables)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `DRONEMAP_PORT` / `PORT` | `8000` | HTTP port |
+| `DRONEMAP_DB` | `data/dronemap.db` | SQLite file for raw posts |
+| `DRONEMAP_WINDOW_HOURS` | `4` | how much history is replayed into the picture |
+| `DRONEMAP_POLL_SCALE` | `1` | multiply all poll intervals (e.g. `2` = half as many requests) |
+| `DRONEMAP_SOURCE` | `web` | `web`, `telethon` or `both` |
+| `DRONEMAP_CHANNELS` | built-in | path to an alternative channels file |
+
+### API
+
+* `GET /api/state` returns tracks, events, alerts, notices, feed and stats (supports `If-None-Match`)
+* `GET /api/sources` returns channels grouped by tier, with health
+* `GET /api/health` returns a liveness summary
+
+## Tests
+
+```bash
+pip install pytest
+```
+
+```bash
+python -m pytest
+```
+
+Parser rules are tested against message patterns taken from the real channels.
+
+## Limits
+
+This is an aid for situational awareness, built from what public channels post. Positions are as
+precise as the posts (often "near village X" or "in region Y"). Reports lag reality by minutes, and
+mass missile attacks with dozens of parallel groups can't be separated perfectly from text. Always
+follow official air-raid alerts.
+
+## Credits
+
+Map data and tiles © OpenStreetMap contributors (fallback tiles © Esri). Village data © GeoNames (CC BY 4.0).
+Map library: Leaflet (BSD-2).

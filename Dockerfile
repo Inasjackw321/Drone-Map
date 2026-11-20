@@ -1,32 +1,12 @@
-FROM python:3.11-slim
-
+FROM python:3.12-slim
 WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 COPY requirements.txt .
-
-# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
-COPY . .
-
-# Create necessary directories
-RUN mkdir -p static/maps templates
-
-# Make main.py executable
-RUN chmod +x main.py
-
-# Initialize database
-RUN python main.py --init-db
-
-# Expose ports
-EXPOSE 5000
-
-# Default command
-CMD ["python", "main.py", "--start-bot"]
+COPY dronemap ./dronemap
+COPY web ./web
+COPY run.py .
+EXPOSE 8000
+VOLUME ["/app/data"]
+HEALTHCHECK --interval=30s --timeout=5s CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"
+CMD ["python", "run.py", "--host", "0.0.0.0", "--port", "8000"]
