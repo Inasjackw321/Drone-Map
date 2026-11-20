@@ -13,13 +13,15 @@ from .engine import Config, Engine
 WEB = Path(__file__).resolve().parent.parent / "web"
 
 
-def create_app(cfg: Config | None = None) -> FastAPI:
+def create_app(cfg: Config | None = None, on_ready=None) -> FastAPI:
     cfg = cfg or Config.from_env()
     engine = Engine(cfg)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         await engine.start()
+        if on_ready:
+            on_ready()
         yield
         await engine.stop()
 
