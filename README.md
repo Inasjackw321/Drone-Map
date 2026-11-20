@@ -160,7 +160,8 @@ follow official air-raid alerts.
 
 * `web/data/admin.json` holds the raions (OCHA COD-AB, valid from 2023-02-01) and oblasts derived
   from them, plus western Russian regions and the Belarus/Moldova outlines (geoBoundaries /
-  OpenStreetMap). Rebuild it with `scripts/build_admin.py`; its docstring lists the downloads.
+  OpenStreetMap). Rebuild it with `scripts/build_admin.py` (needs `pip install shapely`, only for
+  building); its docstring lists the downloads.
 * The occupied territory is fetched at run time from the daily DeepState mirror
   (github.com/cyterat/deepstate-map-data) and cached in `data/occupied.geojson`.
 
