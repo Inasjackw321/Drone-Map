@@ -20,7 +20,15 @@ reports into tracks.
 
 ## Run it
 
-Needs Python 3.10+.
+Needs Python 3.10+ (on Windows, tick "Add Python to PATH" when installing).
+
+```bash
+git clone https://github.com/inasjackw321/drone-map.git
+```
+
+```bash
+cd drone-map
+```
 
 ```bash
 pip install -r requirements.txt
@@ -30,8 +38,9 @@ pip install -r requirements.txt
 python run.py
 ```
 
-Open http://localhost:8000. The first full round of channel reads takes about a minute, and
-the last 3–4 hours of posts are loaded on start.
+Your browser opens the map at http://localhost:8000 (open it yourself if it doesn't). Keep the
+terminal window open while you use the map; Ctrl+C stops it. The first full round of channel
+reads takes about a minute, and the last 3–4 hours of posts are loaded on start.
 
 To try it without Telegram access, run the built-in scripted scenario:
 

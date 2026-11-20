@@ -327,12 +327,35 @@
     $('#tabCountTargets').textContent = active.length || '';
     let html = '';
     if (!all.length) {
-      html = `<div class="empty"><b>Quiet skies</b>No targets reported in the last hours${S.hidden.size ? ' (some types are filtered out)' : ''}.</div>`;
+      html = emptyExplanation();
     } else {
       if (active.length) html += `<div class="section-title">Active · ${active.length}</div>` + active.map(targetRow).join('');
       if (rest.length) html += `<div class="section-title">Ended or no recent update · ${rest.length}</div>` + rest.map(targetRow).join('');
     }
     $('#tab-targets').innerHTML = html;
+  }
+
+  // why is the list empty? channels still loading, Telegram unreachable, or really quiet
+  function emptyExplanation() {
+    const chans = S.sources ? S.sources.groups.flatMap(g => g.channels) : [];
+    const ok = chans.filter(c => c.state === 'ok');
+    const failing = chans.filter(c => c.state === 'error');
+    const pending = chans.filter(c => c.state === 'pending');
+    const filtered = S.hidden.size ? ' Some threat types are switched off in the filters.' : '';
+    if (S.offline) return `<div class="empty"><b>Can't reach the Drone Map server</b>Is the terminal window with <code>python run.py</code> still open?</div>`;
+    if (S.state?.mode !== 'demo' && chans.length && !ok.length && pending.length) {
+      return `<div class="empty"><b>Reading the channels…</b>Checking ${chans.length} Telegram channels for the first time. This takes about a minute.</div>`;
+    }
+    if (S.state?.mode !== 'demo' && chans.length && !ok.length && failing.length) {
+      return `<div class="empty" style="text-align:left"><b style="text-align:center">Can't reach Telegram</b>
+        None of the ${chans.length} channels could be read. Open <a href="https://t.me/s/kpszsu" target="_blank" rel="noopener">t.me/s/kpszsu</a>
+        in your browser: if it doesn't load, Telegram is blocked on this network or by a firewall, VPN or antivirus.
+        <br><br><span style="color:var(--faint);font-size:12px">Error: ${esc(failing[0].error || 'unknown')}</span></div>`;
+    }
+    const newest = ok.reduce((a, c) => (c.last_post_ts || 0) > (a?.last_post_ts || 0) ? c : a, null);
+    const posts = S.state?.messages_in_window || 0;
+    const last = newest?.last_post_ts ? ` Latest post ${ago(newest.last_post_ts)} from @${esc(newest.handle)}.` : '';
+    return `<div class="empty"><b>Quiet skies</b>No drones or missiles reported right now. ${ok.length ? `Reading ${ok.length} of ${chans.length} channels, ${posts} posts from the last hours checked.` : ''}${last}${filtered}</div>`;
   }
 
   // ------------------------------------------------------------------ panel: detail

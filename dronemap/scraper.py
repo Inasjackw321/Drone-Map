@@ -6,6 +6,7 @@ exponential back-off on errors, a global rate limiter and Retry-After handling f
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import logging
 import random
 import time
@@ -18,6 +19,9 @@ from bs4 import BeautifulSoup
 from .store import RawMessage, Store
 
 log = logging.getLogger("dronemap.scraper")
+
+# lxml is faster, but Python's built-in parser works everywhere
+HTML_PARSER = "lxml" if importlib.util.find_spec("lxml") else "html.parser"
 
 BASE = "https://t.me/s/"
 HEADERS = {
@@ -49,7 +53,7 @@ class SourceStatus:
 
 def parse_channel_html(html: str, channel: str) -> tuple[list[RawMessage], bool]:
     """Return (messages, has_preview)."""
-    soup = BeautifulSoup(html, "lxml")
+    soup = BeautifulSoup(html, HTML_PARSER)
     if soup.select_one(".tgme_channel_history") is None and soup.select_one(".tgme_widget_message") is None:
         return [], False
     out: list[RawMessage] = []
@@ -115,6 +119,7 @@ class WebScraper:
             self.status[ch["handle"]] = st
         self._client: httpx.AsyncClient | None = None
         self.stopped = False
+        self._warned = 0
 
     def _interval(self, st: SourceStatus) -> float:
         base = POLL_SECONDS.get(st.tier, 60) * self.poll_scale
@@ -172,11 +177,39 @@ class WebScraper:
                 st.failures += 1
                 st.state = "error"
                 st.error = f"{type(e).__name__}: {e}"[:200]
-                log.debug("fetch %s failed: %s", st.handle, st.error)
+                if st.failures == 1:
+                    self._warned += 1
+                    if self._warned <= 3:
+                        log.warning("could not read @%s: %s", st.handle, st.error)
             finally:
                 st.next_due = time.time() + self._interval(st)
 
+    def summary(self) -> str:
+        states = [st.state for st in self.status.values() if st.via == "web"]
+        ok, err = states.count("ok"), states.count("error")
+        nop = states.count("no_preview")
+        text = f"read {ok} of {len(states)} channels"
+        if nop:
+            text += f", {nop} without web preview"
+        if err:
+            text += f", {err} failing"
+        return text
+
+    async def _report(self) -> None:
+        """Say in the terminal how the first round went, and keep warning while nothing works."""
+        while any(st.state == "pending" for st in self.status.values() if st.via == "web"):
+            await asyncio.sleep(2)
+        log.info("Telegram: %s", self.summary())
+        while not self.stopped:
+            states = [st for st in self.status.values() if st.via == "web"]
+            if states and not any(st.state == "ok" for st in states):
+                errs = [st.error for st in states if st.error]
+                log.error("Telegram cannot be reached (%s). Is t.me blocked on this network or by a VPN/"
+                          "firewall? Open https://t.me/s/kpszsu in your browser to check.", errs[0] if errs else "?")
+            await asyncio.sleep(300)
+
     async def run(self) -> None:
+        asyncio.create_task(self._report())
         async with httpx.AsyncClient(headers=HEADERS, timeout=15, follow_redirects=True,
                                      limits=httpx.Limits(max_connections=8)) as client:
             self._client = client
