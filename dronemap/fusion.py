@@ -375,16 +375,25 @@ class Fusion:
             elif ev.place is not None:
                 self._add_event(ev.kind, ev, ref)
         if ref.tier != "aggregator":
-            for o in parsed.alerts_on:
-                center = GAZETTEER.oblast_center.get(o) or (GAZETTEER.places.get("kyiv") if o == "kyiv_city" else None)
-                prev = self.alerts.get(o)
-                self.alerts[o] = {"oblast": o, "name": OBLAST_NAMES.get(o, o), "since": prev["since"] if prev else ref.ts,
-                                  "last_ts": ref.ts, "channel": ref.channel,
-                                  "lat": center.lat if center else None, "lon": center.lon if center else None}
-            for o in parsed.alerts_off:
-                self.alerts.pop(o, None)
-            if parsed.alerts_off:
-                self.on_all_clear(parsed.alerts_off, ref)
+            for unit in parsed.alerts_on:
+                raion = GAZETTEER.raions.get(unit)
+                if raion is not None:
+                    kind, oblast, name, center = "raion", raion.oblast, raion.name, raion
+                else:
+                    kind, oblast, name = "oblast", unit, OBLAST_NAMES.get(unit, unit)
+                    center = GAZETTEER.oblast_center.get(unit) or (GAZETTEER.places.get("kyiv") if unit == "kyiv_city" else None)
+                prev = self.alerts.get(unit)
+                self.alerts[unit] = {"id": unit, "kind": kind, "oblast": oblast, "name": name, "level": parsed.alert_level,
+                                     "since": prev["since"] if prev else ref.ts, "last_ts": ref.ts, "channel": ref.channel,
+                                     "lat": center.lat if center else None, "lon": center.lon if center else None}
+            for unit in parsed.alerts_off:
+                self.alerts.pop(unit, None)
+                if unit in OBLAST_NAMES:                      # whole oblast cleared: its districts too
+                    for k in [k for k, a in self.alerts.items() if a["oblast"] == unit]:
+                        self.alerts.pop(k, None)
+            cleared_oblasts = {u for u in parsed.alerts_off if u in OBLAST_NAMES}
+            if cleared_oblasts:
+                self.on_all_clear(cleared_oblasts, ref)
             # nationwide banners: official / reconnaissance channels, or a regional
             # channel warning about ballistic or Kinzhal launches
             banners = [b for b in parsed.banners if (ref.tier in ("official", "recon")

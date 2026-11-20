@@ -35,7 +35,7 @@ _W = r"(?<![\w-])"  # left word boundary that treats hyphen as part of a word
 THREAT_PATTERNS: list[tuple[str, re.Pattern]] = [(k, re.compile(p)) for k, p in [
     ("kinzhal", _W + r"(?:кинджал\w*|кинжал\w*|[хx]-?47\w*|kinzhal)"),
     ("ballistic", _W + r"(?:балісти\w*|баллисти\w*|іскандер\w*|искандер\w*|кн-?23|kn-?23|[сc]-?[34]00\b|"
-                  r"швидкісн\w*\s+ціл\w*|скоростн\w*\s+цел\w*|ballistic\w*|iskander)"),
+                  r"швидкісн\w*\s+ціл\w*|високошвидкісн\w*\s+ціл\w*|скоростн\w*\s+цел\w*|высокоскоростн\w*\s+цел\w*|ballistic\w*|iskander)"),
     ("cruise", _W + r"(?:крилат\w*|крылат\w*|калібр\w*|калибр\w*|[хx]-?(?:101|555|59|69|22|32|55)\b|"
                r"онікс\w*|оникс\w*|циркон\w*|cruise)"),
     ("missile", _W + r"(?:ракет\w*|missile\w*)|🚀"),
@@ -202,8 +202,9 @@ class AreaEvent:
 class ParsedMessage:
     sightings: list[Sighting] = field(default_factory=list)
     events: list[AreaEvent] = field(default_factory=list)
-    alerts_on: set[str] = field(default_factory=set)
+    alerts_on: set[str] = field(default_factory=set)      # raion ids ("UA5902") or oblast keys ("sumy")
     alerts_off: set[str] = field(default_factory=set)
+    alert_level: str = "red"                                # red | yellow
     banners: list[tuple[str, str]] = field(default_factory=list)   # (kind, text)
     threats: list[str] = field(default_factory=list)
     places: list[str] = field(default_factory=list)
@@ -410,6 +411,22 @@ def _after_threat_word(prefix: str) -> bool:
     return any(e >= len(tail) - 1 for _, _, e in find_threats(tail))
 
 
+def alert_units(refs: list[PlaceRef], fallback) -> set[str]:
+    """Where an alert applies: districts when named ("Конотопський район"), otherwise whole oblasts."""
+    units = set()
+    for r in refs:
+        if r.place.kind == "A":
+            units.add(r.place.key[1:])
+        elif _ukr(r.place.oblast):
+            units.add(r.place.oblast)
+    return units or set(fallback)
+
+
+def alert_level(text: str) -> str:
+    """UkraineAlarmSignal: 🔴 red level (sirens) / 🟡 yellow level; "відбій червоної" drops red to yellow."""
+    return "yellow" if ("жовт" in text or "відбій червон" in text or "🟡" in text) else "red"
+
+
 def _ukr(oblast: str) -> bool:
     return not oblast.startswith(("ru_", "sea"))
 
@@ -446,12 +463,17 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
 
     # ---- alert-system style posts: a header line and a list of districts
     if not msg_threats or (ALERT_RE.search(norm) and not MOVE_CUE_RE.search(norm)):
-        if ALLCLEAR_RE.search(norm):
-            if "червон" not in norm:                       # "відбій червоної тривоги" = yellow level remains
-                res.alerts_off.update(msg_oblasts or single_region)
+        ukr_refs = [r for r in all_refs if _ukr(r.place.oblast)]
+        if ALLCLEAR_RE.search(norm) or "відбій" in norm:
+            if "червон" in norm:                           # "відбій червоної тривоги": yellow level remains
+                res.alerts_on.update(alert_units(ukr_refs, single_region))
+                res.alert_level = "yellow"
+            else:
+                res.alerts_off.update(alert_units(ukr_refs, single_region))
             return res
         if ALERT_RE.search(norm):
-            res.alerts_on.update(msg_oblasts or single_region)
+            res.alerts_on.update(alert_units(ukr_refs, single_region))
+            res.alert_level = alert_level(norm)
             return res
 
     # ---- "в області чисто", "Кременчук поки чисто"
@@ -514,11 +536,12 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
         # ---- air-raid alert state (region level)
         if is_allclear:
             if "червон" not in seg:
-                res.alerts_off.update(oblasts or single_region)
+                res.alerts_off.update(alert_units(refs, single_region))
             if not threats_here or not has_move_cue:
                 continue
         if is_alert:
-            res.alerts_on.update(oblasts or single_region)
+            res.alerts_on.update(alert_units(refs, single_region))
+            res.alert_level = alert_level(seg)
 
         # ---- aviation notices
         if AVIATION_RE.search(seg) and (TAKEOFF_RE.search(seg) or is_threat_area):

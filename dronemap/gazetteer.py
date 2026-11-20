@@ -15,8 +15,10 @@ tokens (comma separated, matched on lower-cased, normalised text):
 """
 from __future__ import annotations
 
+import json
 import math
 import re
+from pathlib import Path
 from dataclasses import dataclass, field
 
 DATA = r"""
@@ -561,7 +563,7 @@ ru_other; caspian; Caspian Sea; 45.000; 49.000; F; каспі~,каспи~
 ru_other; belarus; Belarus; 51.900; 28.000; F; білорус~,беларус~,бєларус~
 """
 
-KIND_PROMINENCE = {"C": 3, "T": 2, "D": 2, "F": 2, "R": 1, "W": 1, "V": 1}
+KIND_PROMINENCE = {"C": 3, "T": 2, "D": 2, "F": 2, "R": 1, "W": 1, "V": 1, "A": 2}
 
 OBLAST_NAMES = {
     "vinnytsia": "Vinnytsia", "volyn": "Volyn", "dnipro": "Dnipropetrovsk", "donetsk": "Donetsk",
@@ -616,7 +618,7 @@ class Place:
 
     @property
     def is_region(self) -> bool:
-        return self.kind in ("R", "W")
+        return self.kind in ("R", "W", "A")
 
     @property
     def precision(self) -> str:
@@ -667,6 +669,25 @@ def _token_prefixes(tok: str) -> set[str]:
     return {v[:3] for v in variants if len(v) >= 3}
 
 
+REGIONS_FILE = Path(__file__).parent / "data" / "regions.json"
+
+
+def _raion_tokens(name: str) -> list[str]:
+    """'Конотопський' -> Ukrainian and Russian forms of 'Konotop raion' in any case."""
+    n = name.lower().replace("’", "'")
+    if not n.endswith(("ський", "цький", "зький", "ський")) and not n.endswith("ий"):
+        return []
+    stem = n[:-2]                                         # конотопськ
+    ru = (stem.replace("ськ", "ск").replace("цьк", "цк").replace("зьк", "зск").replace("і", "и").replace("ї", "и")
+          .replace("є", "е").replace("'", ""))
+    stems = {stem, ru, ru.replace("ив", "ов")}            # Богодухівськ -> Богодуховск
+    toks = []
+    for st in stems:
+        base = st.replace("-", "-")
+        toks += [f"{base}~ район*", f"{base}~ р-н*", f"{base}~ р-н.", f"{base}~ районі"]
+    return toks
+
+
 class Gazetteer:
     def __init__(self, data: str = DATA):
         self.places: dict[str, Place] = {}
@@ -688,11 +709,22 @@ class Gazetteer:
             if kind == "R":
                 self.oblast_center[oblast] = place
             toks = [t.strip() for t in tokens.split(",") if t.strip()]
-            if kind == "R":
-                for t in list(toks):
-                    if t.endswith("~ обл*") and not t.startswith("/"):
-                        stem = t[: -len(" обл*")]
-                        toks += [f"{stem} район*", f"{stem} р-н*"]
+            self._add(place, toks)
+        self.raions: dict[str, Place] = {}
+        if REGIONS_FILE.exists():
+            idx = json.loads(REGIONS_FILE.read_text(encoding="utf-8"))
+            for r in idx["raions"]:
+                toks = _raion_tokens(r["name"])
+                if not toks or r["oblast"] in ("kyiv_city", "sevastopol"):
+                    continue
+                place = Place("r" + r["id"], f'{r["name_en"]} raion', r["label"][1], r["label"][0], r["oblast"], "A")
+                self.places[place.key] = place
+                self.raions[r["id"]] = place
+                self._add(place, toks)
+
+    def _add(self, place: "Place", toks: list[str]) -> None:
+        if True:
+            key = place.key
             alt = "|".join(f"(?:{_token_to_regex(t)})" for t in toks)
             self._patterns[key] = re.compile(rf"(?<![\w'])(?:{alt})(?![\w'])")
             for t in toks:

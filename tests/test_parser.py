@@ -190,16 +190,31 @@ def test_unrelated_text():
 
 def test_alert_system_district_list():
     r = parse_message("🔴 Червоний рівень тривоги\n• Конотопський район (Сумська обл.)\n• Шосткинський район (Сумська обл.)")
-    assert r.alerts_on == {"sumy"}
+    assert r.alerts_on == {"UA5902", "UA5910"} and r.alert_level == "red"
+    r = parse_message("🟡 Жовтий рівень тривоги\n• Баштанський район (Миколаївська обл.)\n• Роздільнянський район (Одеська обл.)")
+    assert r.alerts_on == {"UA4802", "UA5114"} and r.alert_level == "yellow"
     r = parse_message("🟢 Відбій тривоги\n• Луцький район (Волинська обл.)\n• Ковельський район (Волинська обл.)")
-    assert r.alerts_off == {"volyn"}
-    # red level lifted, yellow remains: the alert stays on
-    assert not parse_message("🟡 Відбій червоної тривоги\n• Полтавський район (Полтавська обл.)").alerts_off
+    assert r.alerts_off == {"UA0708", "UA0706"}
+    # red level lifted, yellow remains
+    r = parse_message("🟡 Відбій червоної тривоги\n• Полтавський район (Полтавська обл.)")
+    assert not r.alerts_off and r.alerts_on == {"UA5308"} and r.alert_level == "yellow"
+
+
+def test_oblast_level_alert():
+    r = parse_message("🔴 Повітряна тривога в Сумська область")
+    assert r.alerts_on == {"sumy"} and r.alert_level == "red"
 
 
 def test_regional_alert_without_known_place_uses_channel_region():
-    assert parse_message("🔴 Сумський район — повітряна тривога, червоний рівень", ("sumy",)).alerts_on == {"sumy"}
-    assert parse_message("🟡 Повітряна тривога в Подільському районі!", ("odesa",)).alerts_on == {"odesa"}
+    r = parse_message("🔴 Сумський район — повітряна тривога, червоний рівень", ("sumy",))
+    assert r.alerts_on == {"UA5908"} and r.alert_level == "red"
+    assert parse_message("🟡 Повітряна тривога в Подільському районі!", ("odesa",)).alerts_on == {"UA5112"}
+    assert parse_message("Повітряна тривога!", ("poltava",)).alerts_on == {"poltava"}
+
+
+def test_raion_as_position():
+    s = one("Шахед над Богодухівським районом")
+    assert s.pos.place.key == "rUA6302" and s.pos.precision == "region"
 
 
 def test_alert_system_threat_notice_is_area_not_target():
