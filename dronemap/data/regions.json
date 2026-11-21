@@ -1,0 +1,1966 @@
+{
+"raions": [
+{
+"id": "UA0102",
+"name": "Бахчисарайський",
+"name_en": "Bakhchysaraiskyi",
+"oblast": "crimea",
+"label": [
+33.821,
+44.664
+]
+},
+{
+"id": "UA0104",
+"name": "Білогірський",
+"name_en": "Bilohirskyi",
+"oblast": "crimea",
+"label": [
+34.499,
+45.05
+]
+},
+{
+"id": "UA0106",
+"name": "Джанкойський",
+"name_en": "Dzhankoiskyi",
+"oblast": "crimea",
+"label": [
+34.302,
+45.798
+]
+},
+{
+"id": "UA0108",
+"name": "Євпаторійський",
+"name_en": "Yevpatoriiskyi",
+"oblast": "crimea",
+"label": [
+33.686,
+45.23
+]
+},
+{
+"id": "UA0110",
+"name": "Керченський",
+"name_en": "Kerchynskyi",
+"oblast": "crimea",
+"label": [
+36.208,
+45.261
+]
+},
+{
+"id": "UA0112",
+"name": "Красногвардійський",
+"name_en": "Krasnohvardiiskyi",
+"oblast": "crimea",
+"label": [
+34.098,
+45.427
+]
+},
+{
+"id": "UA0114",
+"name": "Красноперекопський",
+"name_en": "Krasnoperekopskyi",
+"oblast": "crimea",
+"label": [
+33.415,
+45.658
+]
+},
+{
+"id": "UA0116",
+"name": "Сімферопольський",
+"name_en": "Simferopolskyi",
+"oblast": "crimea",
+"label": [
+34.061,
+45.035
+]
+},
+{
+"id": "UA0118",
+"name": "Феодосійський",
+"name_en": "Feodosiiskyi",
+"oblast": "crimea",
+"label": [
+35.153,
+45.134
+]
+},
+{
+"id": "UA0120",
+"name": "Ялтинський",
+"name_en": "Yaltynskyi",
+"oblast": "crimea",
+"label": [
+34.297,
+44.659
+]
+},
+{
+"id": "UA0502",
+"name": "Вінницький",
+"name_en": "Vinnytskyi",
+"oblast": "vinnytsia",
+"label": [
+29.223,
+49.298
+]
+},
+{
+"id": "UA0504",
+"name": "Гайсинський",
+"name_en": "Haisynskyi",
+"oblast": "vinnytsia",
+"label": [
+29.465,
+48.482
+]
+},
+{
+"id": "UA0506",
+"name": "Жмеринський",
+"name_en": "Zhmerynskyi",
+"oblast": "vinnytsia",
+"label": [
+27.982,
+48.981
+]
+},
+{
+"id": "UA0508",
+"name": "Могилів-Подільський",
+"name_en": "Mohyliv-Podilskyi",
+"oblast": "vinnytsia",
+"label": [
+27.697,
+48.628
+]
+},
+{
+"id": "UA0510",
+"name": "Тульчинський",
+"name_en": "Tulchynskyi",
+"oblast": "vinnytsia",
+"label": [
+28.662,
+48.54
+]
+},
+{
+"id": "UA0512",
+"name": "Хмільницький",
+"name_en": "Khmilnytskyi",
+"oblast": "vinnytsia",
+"label": [
+28.467,
+49.6
+]
+},
+{
+"id": "UA0702",
+"name": "Володимирський",
+"name_en": "Volodymyrskyi",
+"oblast": "volyn",
+"label": [
+24.312,
+50.79
+]
+},
+{
+"id": "UA0704",
+"name": "Камінь-Каширський",
+"name_en": "Kamin-Kashyrskyi",
+"oblast": "volyn",
+"label": [
+25.189,
+51.669
+]
+},
+{
+"id": "UA0706",
+"name": "Ковельський",
+"name_en": "Kovelskyi",
+"oblast": "volyn",
+"label": [
+24.403,
+51.408
+]
+},
+{
+"id": "UA0708",
+"name": "Луцький",
+"name_en": "Lutskyi",
+"oblast": "volyn",
+"label": [
+25.44,
+50.9
+]
+},
+{
+"id": "UA1202",
+"name": "Дніпровський",
+"name_en": "Dniprovskyi",
+"oblast": "dnipro",
+"label": [
+34.998,
+48.394
+]
+},
+{
+"id": "UA1204",
+"name": "Кам'янський",
+"name_en": "Kamianskyi",
+"oblast": "dnipro",
+"label": [
+34.098,
+48.476
+]
+},
+{
+"id": "UA1206",
+"name": "Криворізький",
+"name_en": "Kryvorizkyi",
+"oblast": "dnipro",
+"label": [
+33.671,
+47.922
+]
+},
+{
+"id": "UA1208",
+"name": "Нікопольський",
+"name_en": "Nikopolskyi",
+"oblast": "dnipro",
+"label": [
+34.262,
+47.727
+]
+},
+{
+"id": "UA1210",
+"name": "Новомосковський",
+"name_en": "Novomoskovskyi",
+"oblast": "dnipro",
+"label": [
+35.381,
+48.776
+]
+},
+{
+"id": "UA1212",
+"name": "Павлоградський",
+"name_en": "Pavlohradskyi",
+"oblast": "dnipro",
+"label": [
+35.899,
+48.653
+]
+},
+{
+"id": "UA1214",
+"name": "Синельниківський",
+"name_en": "Synelnykivskyi",
+"oblast": "dnipro",
+"label": [
+36.314,
+48.164
+]
+},
+{
+"id": "UA1402",
+"name": "Бахмутський",
+"name_en": "Bakhmutskyi",
+"oblast": "donetsk",
+"label": [
+38.065,
+48.653
+]
+},
+{
+"id": "UA1404",
+"name": "Волноваський",
+"name_en": "Volnovaskyi",
+"oblast": "donetsk",
+"label": [
+37.437,
+47.6
+]
+},
+{
+"id": "UA1406",
+"name": "Горлівський",
+"name_en": "Horlivskyi",
+"oblast": "donetsk",
+"label": [
+38.466,
+48.124
+]
+},
+{
+"id": "UA1408",
+"name": "Донецький",
+"name_en": "Donetskyi",
+"oblast": "donetsk",
+"label": [
+38.438,
+47.79
+]
+},
+{
+"id": "UA1410",
+"name": "Кальміуський",
+"name_en": "Kalmiuskyi",
+"oblast": "donetsk",
+"label": [
+38.05,
+47.617
+]
+},
+{
+"id": "UA1412",
+"name": "Краматорський",
+"name_en": "Kramatorskyi",
+"oblast": "donetsk",
+"label": [
+37.539,
+48.756
+]
+},
+{
+"id": "UA1414",
+"name": "Маріупольський",
+"name_en": "Mariupolskyi",
+"oblast": "donetsk",
+"label": [
+37.301,
+47.164
+]
+},
+{
+"id": "UA1416",
+"name": "Покровський",
+"name_en": "Pokrovskyi",
+"oblast": "donetsk",
+"label": [
+37.162,
+48.343
+]
+},
+{
+"id": "UA1802",
+"name": "Бердичівський",
+"name_en": "Berdychivskyi",
+"oblast": "zhytomyr",
+"label": [
+29.08,
+49.915
+]
+},
+{
+"id": "UA1804",
+"name": "Житомирський",
+"name_en": "Zhytomyrskyi",
+"oblast": "zhytomyr",
+"label": [
+28.497,
+50.398
+]
+},
+{
+"id": "UA1806",
+"name": "Коростенський",
+"name_en": "Korostenskyi",
+"oblast": "zhytomyr",
+"label": [
+28.927,
+51.103
+]
+},
+{
+"id": "UA1808",
+"name": "Звягельський",
+"name_en": "Zviahelskyi",
+"oblast": "zhytomyr",
+"label": [
+27.623,
+50.657
+]
+},
+{
+"id": "UA2102",
+"name": "Берегівський",
+"name_en": "Berehivskyi",
+"oblast": "zakarpattia",
+"label": [
+22.976,
+48.133
+]
+},
+{
+"id": "UA2104",
+"name": "Мукачівський",
+"name_en": "Mukachivskyi",
+"oblast": "zakarpattia",
+"label": [
+23.028,
+48.66
+]
+},
+{
+"id": "UA2106",
+"name": "Рахівський",
+"name_en": "Rakhivskyi",
+"oblast": "zakarpattia",
+"label": [
+24.296,
+48.132
+]
+},
+{
+"id": "UA2108",
+"name": "Тячівський",
+"name_en": "Tiachivskyi",
+"oblast": "zakarpattia",
+"label": [
+23.768,
+48.18
+]
+},
+{
+"id": "UA2110",
+"name": "Ужгородський",
+"name_en": "Uzhhorodskyi",
+"oblast": "zakarpattia",
+"label": [
+22.641,
+48.841
+]
+},
+{
+"id": "UA2112",
+"name": "Хустський",
+"name_en": "Khustskyi",
+"oblast": "zakarpattia",
+"label": [
+23.43,
+48.455
+]
+},
+{
+"id": "UA2302",
+"name": "Бердянський",
+"name_en": "Berdianskyi",
+"oblast": "zaporizhzhia",
+"label": [
+36.349,
+46.947
+]
+},
+{
+"id": "UA2304",
+"name": "Василівський",
+"name_en": "Vasylivskyi",
+"oblast": "zaporizhzhia",
+"label": [
+35.357,
+47.414
+]
+},
+{
+"id": "UA2306",
+"name": "Запорізький",
+"name_en": "Zaporizkyi",
+"oblast": "zaporizhzhia",
+"label": [
+35.185,
+47.878
+]
+},
+{
+"id": "UA2308",
+"name": "Мелітопольський",
+"name_en": "Melitopolskyi",
+"oblast": "zaporizhzhia",
+"label": [
+35.324,
+46.778
+]
+},
+{
+"id": "UA2310",
+"name": "Пологівський",
+"name_en": "Polohivskyi",
+"oblast": "zaporizhzhia",
+"label": [
+36.455,
+47.55
+]
+},
+{
+"id": "UA2602",
+"name": "Верховинський",
+"name_en": "Verkhovynskyi",
+"oblast": "ivano_frankivsk",
+"label": [
+24.771,
+48.076
+]
+},
+{
+"id": "UA2604",
+"name": "Івано-Франківський",
+"name_en": "Ivano-Frankivskyi",
+"oblast": "ivano_frankivsk",
+"label": [
+24.746,
+48.96
+]
+},
+{
+"id": "UA2606",
+"name": "Калуський",
+"name_en": "Kaluskyi",
+"oblast": "ivano_frankivsk",
+"label": [
+23.945,
+48.843
+]
+},
+{
+"id": "UA2608",
+"name": "Коломийський",
+"name_en": "Kolomyiskyi",
+"oblast": "ivano_frankivsk",
+"label": [
+25.397,
+48.583
+]
+},
+{
+"id": "UA2610",
+"name": "Косівський",
+"name_en": "Kosivskyi",
+"oblast": "ivano_frankivsk",
+"label": [
+24.897,
+48.323
+]
+},
+{
+"id": "UA2612",
+"name": "Надвірнянський",
+"name_en": "Nadvirnianskyi",
+"oblast": "ivano_frankivsk",
+"label": [
+24.538,
+48.476
+]
+},
+{
+"id": "UA3200",
+"name": "Чорнобильська зона відчуження",
+"name_en": "Chornobyl Exclusion Zone",
+"oblast": "kyiv",
+"label": [
+30.058,
+51.312
+]
+},
+{
+"id": "UA3202",
+"name": "Білоцерківський",
+"name_en": "Bilotserkivskyi",
+"oblast": "kyiv",
+"label": [
+30.205,
+49.678
+]
+},
+{
+"id": "UA3204",
+"name": "Бориспільський",
+"name_en": "Boryspilskyi",
+"oblast": "kyiv",
+"label": [
+31.66,
+50.083
+]
+},
+{
+"id": "UA3206",
+"name": "Броварський",
+"name_en": "Brovarskyi",
+"oblast": "kyiv",
+"label": [
+30.948,
+50.622
+]
+},
+{
+"id": "UA3208",
+"name": "Бучанський",
+"name_en": "Buchanskyi",
+"oblast": "kyiv",
+"label": [
+29.799,
+50.559
+]
+},
+{
+"id": "UA3210",
+"name": "Вишгородський",
+"name_en": "Vyshhorodskyi",
+"oblast": "kyiv",
+"label": [
+29.735,
+50.986
+]
+},
+{
+"id": "UA3212",
+"name": "Обухівський",
+"name_en": "Obukhivskyi",
+"oblast": "kyiv",
+"label": [
+30.96,
+49.764
+]
+},
+{
+"id": "UA3214",
+"name": "Фастівський",
+"name_en": "Fastivskyi",
+"oblast": "kyiv",
+"label": [
+30.013,
+50.194
+]
+},
+{
+"id": "UA3502",
+"name": "Голованівський",
+"name_en": "Holovanivskyi",
+"oblast": "kirovohrad",
+"label": [
+30.605,
+48.379
+]
+},
+{
+"id": "UA3504",
+"name": "Кропивницький",
+"name_en": "Kropyvnytskyi",
+"oblast": "kirovohrad",
+"label": [
+32.381,
+48.293
+]
+},
+{
+"id": "UA3506",
+"name": "Новоукраїнський",
+"name_en": "Novoukrainskyi",
+"oblast": "kirovohrad",
+"label": [
+31.545,
+48.448
+]
+},
+{
+"id": "UA3508",
+"name": "Олександрійський",
+"name_en": "Oleksandriiskyi",
+"oblast": "kirovohrad",
+"label": [
+33.246,
+48.697
+]
+},
+{
+"id": "UA4402",
+"name": "Алчевський",
+"name_en": "Alchevskyi",
+"oblast": "luhansk",
+"label": [
+38.688,
+48.514
+]
+},
+{
+"id": "UA4404",
+"name": "Довжанський",
+"name_en": "Dovzhanskyi",
+"oblast": "luhansk",
+"label": [
+39.62,
+48.011
+]
+},
+{
+"id": "UA4406",
+"name": "Луганський",
+"name_en": "Luhanskyi",
+"oblast": "luhansk",
+"label": [
+39.335,
+48.455
+]
+},
+{
+"id": "UA4408",
+"name": "Ровеньківський",
+"name_en": "Rovenkivskyi",
+"oblast": "luhansk",
+"label": [
+39.226,
+48.046
+]
+},
+{
+"id": "UA4410",
+"name": "Сватівський",
+"name_en": "Svativskyi",
+"oblast": "luhansk",
+"label": [
+38.369,
+49.654
+]
+},
+{
+"id": "UA4412",
+"name": "Сєвєродонецький",
+"name_en": "Sievierodonetskyi",
+"oblast": "luhansk",
+"label": [
+38.446,
+48.985
+]
+},
+{
+"id": "UA4414",
+"name": "Старобільський",
+"name_en": "Starobilskyi",
+"oblast": "luhansk",
+"label": [
+39.4,
+49.412
+]
+},
+{
+"id": "UA4416",
+"name": "Щастинський",
+"name_en": "Shchastynskyi",
+"oblast": "luhansk",
+"label": [
+39.119,
+48.89
+]
+},
+{
+"id": "UA4602",
+"name": "Дрогобицький",
+"name_en": "Drohobytskyi",
+"oblast": "lviv",
+"label": [
+23.514,
+49.342
+]
+},
+{
+"id": "UA4604",
+"name": "Золочівський",
+"name_en": "Zolochivskyi",
+"oblast": "lviv",
+"label": [
+24.871,
+49.921
+]
+},
+{
+"id": "UA4606",
+"name": "Львівський",
+"name_en": "Lvivskyi",
+"oblast": "lviv",
+"label": [
+24.136,
+49.841
+]
+},
+{
+"id": "UA4608",
+"name": "Самбірський",
+"name_en": "Sambirskyi",
+"oblast": "lviv",
+"label": [
+22.94,
+49.434
+]
+},
+{
+"id": "UA4610",
+"name": "Стрийський",
+"name_en": "Stryiskyi",
+"oblast": "lviv",
+"label": [
+24.034,
+49.372
+]
+},
+{
+"id": "UA4612",
+"name": "Червоноградський",
+"name_en": "Chervonohradskyi",
+"oblast": "lviv",
+"label": [
+24.222,
+50.387
+]
+},
+{
+"id": "UA4614",
+"name": "Яворівський",
+"name_en": "Yavorivskyi",
+"oblast": "lviv",
+"label": [
+23.239,
+49.828
+]
+},
+{
+"id": "UA4802",
+"name": "Баштанський",
+"name_en": "Bashtanskyi",
+"oblast": "mykolaiv",
+"label": [
+32.64,
+47.478
+]
+},
+{
+"id": "UA4804",
+"name": "Вознесенський",
+"name_en": "Voznesenskyi",
+"oblast": "mykolaiv",
+"label": [
+31.144,
+47.535
+]
+},
+{
+"id": "UA4806",
+"name": "Миколаївський",
+"name_en": "Mykolaivskyi",
+"oblast": "mykolaiv",
+"label": [
+31.773,
+46.991
+]
+},
+{
+"id": "UA4808",
+"name": "Первомайський",
+"name_en": "Pervomaiskyi",
+"oblast": "mykolaiv",
+"label": [
+30.597,
+47.936
+]
+},
+{
+"id": "UA5102",
+"name": "Березівський",
+"name_en": "Berezivskyi",
+"oblast": "odesa",
+"label": [
+30.54,
+47.236
+]
+},
+{
+"id": "UA5104",
+"name": "Білгород-Дністровський",
+"name_en": "Bilhorod-Dnistrovskyi",
+"oblast": "odesa",
+"label": [
+29.891,
+46.043
+]
+},
+{
+"id": "UA5106",
+"name": "Болградський",
+"name_en": "Bolhradskyi",
+"oblast": "odesa",
+"label": [
+29.256,
+46.045
+]
+},
+{
+"id": "UA5108",
+"name": "Ізмаїльський",
+"name_en": "Izmailskyi",
+"oblast": "odesa",
+"label": [
+29.128,
+45.575
+]
+},
+{
+"id": "UA5110",
+"name": "Одеський",
+"name_en": "Odeskyi",
+"oblast": "odesa",
+"label": [
+30.506,
+46.457
+]
+},
+{
+"id": "UA5112",
+"name": "Подільський",
+"name_en": "Podilskyi",
+"oblast": "odesa",
+"label": [
+29.912,
+47.85
+]
+},
+{
+"id": "UA5114",
+"name": "Роздільнянський",
+"name_en": "Rozdilnianskyi",
+"oblast": "odesa",
+"label": [
+29.831,
+47.107
+]
+},
+{
+"id": "UA5302",
+"name": "Кременчуцький",
+"name_en": "Kremenchutskyi",
+"oblast": "poltava",
+"label": [
+33.567,
+49.247
+]
+},
+{
+"id": "UA5304",
+"name": "Лубенський",
+"name_en": "Lubenskyi",
+"oblast": "poltava",
+"label": [
+32.713,
+50.062
+]
+},
+{
+"id": "UA5306",
+"name": "Миргородський",
+"name_en": "Myrhorodskyi",
+"oblast": "poltava",
+"label": [
+33.722,
+50.132
+]
+},
+{
+"id": "UA5308",
+"name": "Полтавський",
+"name_en": "Poltavskyi",
+"oblast": "poltava",
+"label": [
+34.617,
+49.592
+]
+},
+{
+"id": "UA5602",
+"name": "Вараський",
+"name_en": "Varaskyi",
+"oblast": "rivne",
+"label": [
+25.93,
+51.637
+]
+},
+{
+"id": "UA5604",
+"name": "Дубенський",
+"name_en": "Dubenskyi",
+"oblast": "rivne",
+"label": [
+25.622,
+50.435
+]
+},
+{
+"id": "UA5606",
+"name": "Рівненський",
+"name_en": "Rivnenskyi",
+"oblast": "rivne",
+"label": [
+26.419,
+50.675
+]
+},
+{
+"id": "UA5608",
+"name": "Сарненський",
+"name_en": "Sarnenskyi",
+"oblast": "rivne",
+"label": [
+26.774,
+51.446
+]
+},
+{
+"id": "UA5902",
+"name": "Конотопський",
+"name_en": "Konotopskyi",
+"oblast": "sumy",
+"label": [
+33.482,
+51.356
+]
+},
+{
+"id": "UA5904",
+"name": "Охтирський",
+"name_en": "Okhtyrskyi",
+"oblast": "sumy",
+"label": [
+34.983,
+50.421
+]
+},
+{
+"id": "UA5906",
+"name": "Роменський",
+"name_en": "Romenskyi",
+"oblast": "sumy",
+"label": [
+33.597,
+50.741
+]
+},
+{
+"id": "UA5908",
+"name": "Сумський",
+"name_en": "Sumskyi",
+"oblast": "sumy",
+"label": [
+34.549,
+50.861
+]
+},
+{
+"id": "UA5910",
+"name": "Шосткинський",
+"name_en": "Shostkynskyi",
+"oblast": "sumy",
+"label": [
+33.792,
+51.923
+]
+},
+{
+"id": "UA6102",
+"name": "Кременецький",
+"name_en": "Kremenetskyi",
+"oblast": "ternopil",
+"label": [
+25.934,
+50.004
+]
+},
+{
+"id": "UA6104",
+"name": "Тернопільський",
+"name_en": "Ternopilskyi",
+"oblast": "ternopil",
+"label": [
+25.368,
+49.517
+]
+},
+{
+"id": "UA6106",
+"name": "Чортківський",
+"name_en": "Chortkivskyi",
+"oblast": "ternopil",
+"label": [
+25.93,
+48.904
+]
+},
+{
+"id": "UA6302",
+"name": "Богодухівський",
+"name_en": "Bohodukhivskyi",
+"oblast": "kharkiv",
+"label": [
+35.46,
+50.002
+]
+},
+{
+"id": "UA6304",
+"name": "Ізюмський",
+"name_en": "Iziumskyi",
+"oblast": "kharkiv",
+"label": [
+37.039,
+49.219
+]
+},
+{
+"id": "UA6306",
+"name": "Красноградський",
+"name_en": "Krasnohradskyi",
+"oblast": "kharkiv",
+"label": [
+35.7,
+49.282
+]
+},
+{
+"id": "UA6308",
+"name": "Куп'янський",
+"name_en": "Kupianskyi",
+"oblast": "kharkiv",
+"label": [
+37.521,
+49.845
+]
+},
+{
+"id": "UA6310",
+"name": "Лозівський",
+"name_en": "Lozivskyi",
+"oblast": "kharkiv",
+"label": [
+36.421,
+48.908
+]
+},
+{
+"id": "UA6312",
+"name": "Харківський",
+"name_en": "Kharkivskyi",
+"oblast": "kharkiv",
+"label": [
+36.258,
+50.053
+]
+},
+{
+"id": "UA6314",
+"name": "Чугуївський",
+"name_en": "Chuhuivskyi",
+"oblast": "kharkiv",
+"label": [
+36.912,
+50.027
+]
+},
+{
+"id": "UA6502",
+"name": "Бериславський",
+"name_en": "Beryslavskyi",
+"oblast": "kherson",
+"label": [
+33.484,
+47.228
+]
+},
+{
+"id": "UA6504",
+"name": "Генічеський",
+"name_en": "Henicheskyi",
+"oblast": "kherson",
+"label": [
+34.407,
+46.509
+]
+},
+{
+"id": "UA6506",
+"name": "Каховський",
+"name_en": "Kakhovskyi",
+"oblast": "kherson",
+"label": [
+33.697,
+46.596
+]
+},
+{
+"id": "UA6508",
+"name": "Скадовський",
+"name_en": "Skadovskyi",
+"oblast": "kherson",
+"label": [
+32.504,
+46.315
+]
+},
+{
+"id": "UA6510",
+"name": "Херсонський",
+"name_en": "Khersonskyi",
+"oblast": "kherson",
+"label": [
+32.968,
+46.558
+]
+},
+{
+"id": "UA6802",
+"name": "Кам'янець-Подільський",
+"name_en": "Kamianets-Podilskyi",
+"oblast": "khmelnytskyi",
+"label": [
+26.598,
+48.747
+]
+},
+{
+"id": "UA6804",
+"name": "Хмельницький",
+"name_en": "Khmelnytskyi",
+"oblast": "khmelnytskyi",
+"label": [
+27.166,
+49.44
+]
+},
+{
+"id": "UA6806",
+"name": "Шепетівський",
+"name_en": "Shepetivskyi",
+"oblast": "khmelnytskyi",
+"label": [
+26.984,
+50.233
+]
+},
+{
+"id": "UA7102",
+"name": "Звенигородський",
+"name_en": "Zvenyhorodskyi",
+"oblast": "cherkasy",
+"label": [
+31.033,
+49.074
+]
+},
+{
+"id": "UA7104",
+"name": "Золотоніський",
+"name_en": "Zolotoniskyi",
+"oblast": "cherkasy",
+"label": [
+32.138,
+49.77
+]
+},
+{
+"id": "UA7106",
+"name": "Уманський",
+"name_en": "Umanskyi",
+"oblast": "cherkasy",
+"label": [
+30.128,
+48.945
+]
+},
+{
+"id": "UA7108",
+"name": "Черкаський",
+"name_en": "Cherkaskyi",
+"oblast": "cherkasy",
+"label": [
+31.879,
+49.236
+]
+},
+{
+"id": "UA7302",
+"name": "Вижницький",
+"name_en": "Vyzhnytskyi",
+"oblast": "chernivtsi",
+"label": [
+25.105,
+47.976
+]
+},
+{
+"id": "UA7304",
+"name": "Дністровський",
+"name_en": "Dnistrovskyi",
+"oblast": "chernivtsi",
+"label": [
+26.955,
+48.47
+]
+},
+{
+"id": "UA7306",
+"name": "Чернівецький",
+"name_en": "Chernivetskyi",
+"oblast": "chernivtsi",
+"label": [
+25.922,
+48.259
+]
+},
+{
+"id": "UA7402",
+"name": "Корюківський",
+"name_en": "Koriukivskyi",
+"oblast": "chernihiv",
+"label": [
+32.22,
+51.732
+]
+},
+{
+"id": "UA7404",
+"name": "Ніжинський",
+"name_en": "Nizhynskyi",
+"oblast": "chernihiv",
+"label": [
+31.679,
+50.912
+]
+},
+{
+"id": "UA7406",
+"name": "Новгород-Сіверський",
+"name_en": "Novhorod-Siverskyi",
+"oblast": "chernihiv",
+"label": [
+32.985,
+52.036
+]
+},
+{
+"id": "UA7408",
+"name": "Прилуцький",
+"name_en": "Prylutskyi",
+"oblast": "chernihiv",
+"label": [
+32.462,
+50.72
+]
+},
+{
+"id": "UA7410",
+"name": "Чернігівський",
+"name_en": "Chernihivskyi",
+"oblast": "chernihiv",
+"label": [
+31.154,
+51.564
+]
+},
+{
+"id": "UA8000",
+"name": "Київ",
+"name_en": "Kyiv",
+"oblast": "kyiv_city",
+"label": [
+30.55,
+50.434
+]
+},
+{
+"id": "UA8500",
+"name": "Севастополь",
+"name_en": "Sevastopol",
+"oblast": "sevastopol",
+"label": [
+33.501,
+44.589
+]
+}
+],
+"russia": [
+{
+"id": "RU-MO",
+"key": "ru_mo",
+"name": "Мордовия",
+"name_en": "Republic of Mordovia",
+"label": [
+45.611,
+54.457
+]
+},
+{
+"id": "RU-TUL",
+"key": "ru_tul",
+"name": "Тульская обл.",
+"name_en": "Tula Oblast",
+"label": [
+37.819,
+53.983
+]
+},
+{
+"id": "RU-IN",
+"key": "ru_in",
+"name": "Ингушетия",
+"name_en": "Ingushetia",
+"label": [
+44.914,
+43.329
+]
+},
+{
+"id": "RU-KIR",
+"key": "ru_kir",
+"name": "Кировская обл.",
+"name_en": "Kirov Oblast",
+"label": [
+50.206,
+58.111
+]
+},
+{
+"id": "RU-KO",
+"key": "ru_ko",
+"name": "Коми",
+"name_en": "Komi Republic",
+"label": [
+54.207,
+63.984
+]
+},
+{
+"id": "RU-KOS",
+"key": "ru_kos",
+"name": "Костромская обл.",
+"name_en": "Kostroma Oblast",
+"label": [
+43.965,
+58.342
+]
+},
+{
+"id": "RU-SVE",
+"key": "ru_sve",
+"name": "Свердловская обл.",
+"name_en": "Sverdlovsk Oblast",
+"label": [
+61.663,
+58.606
+]
+},
+{
+"id": "RU-VGG",
+"key": "ru_vgg",
+"name": "Волгоградская обл.",
+"name_en": "Volgograd Oblast",
+"label": [
+43.951,
+49.633
+]
+},
+{
+"id": "RU-PER",
+"key": "ru_per",
+"name": "Пермский край",
+"name_en": "Perm Krai",
+"label": [
+56.181,
+58.895
+]
+},
+{
+"id": "RU-PSK",
+"key": "ru_psk",
+"name": "Псковская обл.",
+"name_en": "Pskov Oblast",
+"label": [
+29.094,
+57.137
+]
+},
+{
+"id": "RU-ROS",
+"key": "ru_ros",
+"name": "Ростовская обл.",
+"name_en": "Rostov Oblast",
+"label": [
+40.957,
+47.565
+]
+},
+{
+"id": "RU-RYA",
+"key": "ru_rya",
+"name": "Рязанская обл.",
+"name_en": "Ryazan Oblast",
+"label": [
+40.388,
+54.361
+]
+},
+{
+"id": "RU-AD",
+"key": "ru_ad",
+"name": "Адыгея",
+"name_en": "Adygea",
+"label": [
+40.127,
+44.501
+]
+},
+{
+"id": "RU-SAM",
+"key": "ru_sam",
+"name": "Самарская обл.",
+"name_en": "Samara Oblast",
+"label": [
+50.594,
+53.026
+]
+},
+{
+"id": "RU-TAM",
+"key": "ru_tam",
+"name": "Тамбовская обл.",
+"name_en": "Tambov Oblast",
+"label": [
+41.667,
+52.673
+]
+},
+{
+"id": "RU-TA",
+"key": "ru_ta",
+"name": "Татарстан",
+"name_en": "Tatarstan",
+"label": [
+50.153,
+55.484
+]
+},
+{
+"id": "RU-NIZ",
+"key": "ru_niz",
+"name": "Нижегородская обл.",
+"name_en": "Nizhny Novgorod Oblast",
+"label": [
+44.382,
+56.06
+]
+},
+{
+"id": "RU-KR",
+"key": "ru_kr",
+"name": "Карелия",
+"name_en": "Republic of Karelia",
+"label": [
+32.669,
+64.429
+]
+},
+{
+"id": "RU-ARK",
+"key": "ru_ark",
+"name": "Архангельская обл.",
+"name_en": "Arkhangelsk Oblast",
+"label": [
+42.258,
+63.543
+]
+},
+{
+"id": "RU-AST",
+"key": "ru_ast",
+"name": "Астраханская обл.",
+"name_en": "Astrakhan Oblast",
+"label": [
+47.753,
+46.971
+]
+},
+{
+"id": "RU-BEL",
+"key": "ru_bel",
+"name": "Белгородская обл.",
+"name_en": "Belgorod Oblast",
+"label": [
+37.902,
+50.825
+]
+},
+{
+"id": "RU-BRY",
+"key": "ru_bry",
+"name": "Брянская обл.",
+"name_en": "Bryansk Oblast",
+"label": [
+33.694,
+53.126
+]
+},
+{
+"id": "RU-CE",
+"key": "ru_ce",
+"name": "Чечня",
+"name_en": "Chechnya",
+"label": [
+45.758,
+43.304
+]
+},
+{
+"id": "RU-CHE",
+"key": "ru_che",
+"name": "Челябинская обл.",
+"name_en": "Chelyabinsk Oblast",
+"label": [
+60.965,
+55.169
+]
+},
+{
+"id": "RU-CU",
+"key": "ru_cu",
+"name": "Чувашия",
+"name_en": "Chuvashia",
+"label": [
+47.034,
+55.554
+]
+},
+{
+"id": "RU-SE",
+"key": "ru_se",
+"name": "Северная Осетия",
+"name_en": "North Ossetia–Alania",
+"label": [
+44.32,
+43.038
+]
+},
+{
+"id": "RU-PNZ",
+"key": "ru_pnz",
+"name": "Пензенская обл.",
+"name_en": "Penza Oblast",
+"label": [
+45.225,
+53.147
+]
+},
+{
+"id": "RU-KB",
+"key": "ru_kb",
+"name": "Кабардино-Балкария",
+"name_en": "Kabardino-Balkaria",
+"label": [
+43.343,
+43.386
+]
+},
+{
+"id": "RU-KDA",
+"key": "ru_kda",
+"name": "Краснодарский край",
+"name_en": "Krasnodar Krai",
+"label": [
+39.575,
+45.963
+]
+},
+{
+"id": "RU-KRS",
+"key": "ru_krs",
+"name": "Курская обл.",
+"name_en": "Kursk Oblast",
+"label": [
+35.593,
+51.643
+]
+},
+{
+"id": "RU-LEN",
+"key": "ru_len",
+"name": "Ленинградская обл.",
+"name_en": "Leningrad oblast",
+"label": [
+34.223,
+60.126
+]
+},
+{
+"id": "RU-ME",
+"key": "ru_me",
+"name": "Марий Эл",
+"name_en": "Mari El",
+"label": [
+48.329,
+56.474
+]
+},
+{
+"id": "RU-MOW",
+"key": "ru_mow",
+"name": "Москва",
+"name_en": "Moscow",
+"label": [
+37.576,
+55.741
+]
+},
+{
+"id": "RU-MOS",
+"key": "ru_mos",
+"name": "Московская обл.",
+"name_en": "Moscow Oblast",
+"label": [
+38.531,
+55.316
+]
+},
+{
+"id": "RU-MUR",
+"key": "ru_mur",
+"name": "Мурманская обл.",
+"name_en": "Murmansk Oblast",
+"label": [
+31.324,
+68.189
+]
+},
+{
+"id": "RU-NGR",
+"key": "ru_ngr",
+"name": "Новгородская обл.",
+"name_en": "Novgorod Oblast",
+"label": [
+31.962,
+58.216
+]
+},
+{
+"id": "RU-ORL",
+"key": "ru_orl",
+"name": "Орловская обл.",
+"name_en": "Oryol Oblast",
+"label": [
+36.007,
+52.934
+]
+},
+{
+"id": "RU-SPE",
+"key": "ru_spe",
+"name": "Санкт-Петербург",
+"name_en": "Saint Petersburg",
+"label": [
+30.364,
+59.919
+]
+},
+{
+"id": "RU-SAR",
+"key": "ru_sar",
+"name": "Саратовская обл.",
+"name_en": "Saratov Oblast",
+"label": [
+47.904,
+51.505
+]
+},
+{
+"id": "RU-SMO",
+"key": "ru_smo",
+"name": "Смоленская обл.",
+"name_en": "Smolensk Oblast",
+"label": [
+32.656,
+54.683
+]
+},
+{
+"id": "RU-STA",
+"key": "ru_sta",
+"name": "Ставропольский край",
+"name_en": "Stavropol Krai",
+"label": [
+43.39,
+44.971
+]
+},
+{
+"id": "RU-TVE",
+"key": "ru_tve",
+"name": "Тверская обл.",
+"name_en": "Tver Oblast",
+"label": [
+34.483,
+57.055
+]
+},
+{
+"id": "RU-UD",
+"key": "ru_ud",
+"name": "Удмуртия",
+"name_en": "Udmurtia",
+"label": [
+53.058,
+57.476
+]
+},
+{
+"id": "RU-KLU",
+"key": "ru_klu",
+"name": "Калужская обл.",
+"name_en": "Kaluga Oblast",
+"label": [
+35.231,
+54.127
+]
+},
+{
+"id": "RU-LIP",
+"key": "ru_lip",
+"name": "Липецкая обл.",
+"name_en": "Lipetsk Oblast",
+"label": [
+39.214,
+52.743
+]
+},
+{
+"id": "RU-ULY",
+"key": "ru_uly",
+"name": "Ульяновская обл.",
+"name_en": "Ulyanovsk Oblast",
+"label": [
+47.416,
+53.812
+]
+},
+{
+"id": "RU-VLA",
+"key": "ru_vla",
+"name": "Владимирская обл.",
+"name_en": "Vladimir Oblast",
+"label": [
+41.404,
+55.856
+]
+},
+{
+"id": "RU-VLG",
+"key": "ru_vlg",
+"name": "Вологодская обл.",
+"name_en": "Vologda Oblast",
+"label": [
+37.202,
+60.137
+]
+},
+{
+"id": "RU-YAR",
+"key": "ru_yar",
+"name": "Ярославская обл.",
+"name_en": "Yaroslavl Oblast",
+"label": [
+39.11,
+57.836
+]
+},
+{
+"id": "RU-VOR",
+"key": "ru_vor",
+"name": "Воронежская обл.",
+"name_en": "Voronezh Oblast",
+"label": [
+40.125,
+50.901
+]
+},
+{
+"id": "RU-IVA",
+"key": "ru_iva",
+"name": "Ивановская обл.",
+"name_en": "Ivanovo Oblast",
+"label": [
+42.329,
+57.008
+]
+},
+{
+"id": "RU-KL",
+"key": "ru_kl",
+"name": "Калмыкия",
+"name_en": "Kalmykia",
+"label": [
+45.291,
+46.458
+]
+},
+{
+"id": "RU-KC",
+"key": "ru_kc",
+"name": "Карачаево-Черкесия",
+"name_en": "Karachay-Cherkessia",
+"label": [
+41.925,
+43.729
+]
+},
+{
+"id": "RU-DA",
+"key": "ru_da",
+"name": "Дагестан",
+"name_en": "Dagestan",
+"label": [
+47.045,
+42.476
+]
+},
+{
+"id": "RU-KGD",
+"key": "ru_kgd",
+"name": "Калининградская обл.",
+"name_en": "Kaliningrad",
+"label": [
+21.604,
+54.74
+]
+},
+{
+"id": "RU-ORE",
+"key": "ru_ore",
+"name": "Оренбургская обл.",
+"name_en": "Orenburg Oblast",
+"label": [
+53.237,
+52.67
+]
+},
+{
+"id": "RU-BA",
+"key": "ru_ba",
+"name": "Башкортостан",
+"name_en": "Bashkortostan",
+"label": [
+55.544,
+54.714
+]
+}
+]
+}

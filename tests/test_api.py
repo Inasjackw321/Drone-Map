@@ -16,7 +16,7 @@ def test_api_and_static_in_demo_mode():
         assert c.get("/api/state", headers={"If-None-Match": etag}).status_code == 304
 
         src = c.get("/api/sources").json()
-        assert [g["tier"] for g in src["groups"]] == ["official", "recon", "regional", "aggregator"]
+        assert [g["tier"] for g in src["groups"]] == ["official", "recon", "regional", "aggregator", "russia"]
         assert sum(len(g["channels"]) for g in src["groups"]) >= 80
 
         assert c.get("/api/health").json()["ok"]
@@ -24,3 +24,20 @@ def test_api_and_static_in_demo_mode():
         assert page.status_code == 200 and "Drone Map" in page.text
         assert c.get("/sw.js").status_code == 200
         assert c.get("/manifest.webmanifest").status_code == 200
+        assert c.get("/api/occupied").json()["type"] == "FeatureCollection"
+        admin = c.get("/data/admin.json").json()
+        assert len(admin["raions"]["features"]) == 139 and admin["russia"]["features"]
+        assert "ru_zones" in body
+
+
+def test_required_data_files_are_in_git():
+    """The app needs these files from a fresh clone; an ignore rule once kept them out of the repo."""
+    import subprocess
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    if not (root / ".git").exists():
+        return
+    tracked = set(subprocess.run(["git", "ls-files"], cwd=root, capture_output=True, text=True).stdout.split())
+    for f in ("web/data/admin.json", "dronemap/data/regions.json", "dronemap/data/settlements.tsv.gz",
+              "web/vendor/leaflet/leaflet.js", "web/basemap.js", "web/snapshot.js", "start.bat"):
+        assert f in tracked, f"{f} is not committed"

@@ -205,7 +205,15 @@ class Settlements:
     def resolve(m: VillageMatch, prefer: list[str], nationwide_ok: bool, neighbors: list[str] = ()) -> Settlement | None:
         local = [c for c in m.candidates if c.oblast in prefer]
         if local:
-            return max(local, key=lambda c: (c.fcode.startswith("PPLA"), c.population))
+            best = max(local, key=lambda c: (c.fcode.startswith("PPLA"), c.population))
+            if nationwide_ok and best.population < 1000 and not best.fcode.startswith("PPLA"):
+                # a nationwide post naming a region: "на Дніпропетровщині від Близнюків" means the town
+                # just across the border, not a hamlet of the same name deep inside the region
+                big = [c for c in m.candidates if c.oblast in neighbors
+                       and (c.population >= 3000 or c.fcode.startswith("PPLA"))]
+                if len(big) == 1:
+                    return big[0]
+            return best
         near = [c for c in m.candidates if c.oblast in neighbors]
         if 0 < len(near) <= 2:                  # just across a region border, and not a common name
             return max(near, key=lambda c: c.population)

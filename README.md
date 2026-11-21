@@ -4,43 +4,55 @@ A live map of drones and missiles over Ukraine, built by reading the public Tele
 channels (Air Force, reconnaissance channels, regional observers and aggregators) and fusing their
 reports into tracks.
 
-- **Every threat type has its own icon:** Shahed, jet Shahed (Geran-3), Gerbera decoy, recon UAV
-  (Orlan/ZALA), Lancet, Molniya, FPV, unknown UAV, cruise missile, ballistic missile, Kinzhal,
-  unknown missile, guided bomb (KAB). Icons rotate to the heading.
-- **Tracks:** reports from different channels are chained into one track per group. Solid lines
-  show the flown path, and dotted lines show the reported destination or heading.
+- **District map in the style of Ukrainian alert maps:** all 136 raions, shaded by air-alert
+  level (🔴 red / 🟡 yellow, per district, from the official alert feed), occupied territory
+  (DeepState line, updated daily) and Ukrainian place names. Add a street map underneath with
+  **Detail**.
+- **Every threat type has its own white silhouette:** Shahed, jet Shahed (Geran-3), Gerbera
+  decoy, recon UAV (Orlan/ZALA), Lancet, Molniya, FPV, unknown UAV, cruise missile, ballistic
+  missile, Kinzhal, unknown missile, guided bomb (KAB). Icons rotate to the heading.
+- **Detect, locate, move:** reports from different channels are fused into one target per group. The map
+  shows each target as an icon at its estimated current position, pointing the way it flies. Between
+  reports it keeps moving along its reported course at its estimated speed, and glides to the real
+  position when the next report arrives. No trails are drawn; ended targets leave the map.
+- **Pinpointing:** a position comes from the most exact thing a post says: a town or village
+  ("над Ромнами"), a spot between two towns ("між Ніжином та Носівкою"), a distance and direction
+  ("10 км на південь від Полтави"), or a town just passed ("від Близнюків на Юріївку"). When a post
+  only says where a drone is heading ("Сумщина: БпЛА курсом на Шалигине", "Шахед на Полтаву"), the
+  icon is placed a short way before that place, on the side it comes from (stated direction, origin,
+  the region it is in, or the nearest border/front), and marked *estimated* with a dashed ring.
+  Short local follow-ups ("Далі Малин", "Повз Більськ") continue the channel's last report.
+- **Russia layer:** drone and missile danger over Russia and the occupied territory, announced by
+  Russian-side channels (`@lpr1_treugolnik`), shown in cyan as its own layer. It never mixes with
+  Ukrainian targets or alerts.
 - **Reliability:** each track gets a confidence score from the channels that reported it. Official
   sources weigh most, then reconnaissance, then regional observers. Aggregators only count when they
   agree with someone else, so a target seen only by aggregators is shown faded with a "?".
   Impossible jumps (speed and heading checks), stale targets and shot-down targets are handled.
-- **Events:** explosions, shot-down reports, threat areas (e.g. "ballistic threat for Kharkiv
-  region"), air-raid alerts per region and nationwide notices (MiG-31K airborne etc.).
+- **Snapshot:** press the camera button, drag a box over any area, and download a clean infographic
+  (PNG), with targets, alerts, counts, legend and scale, or the data as GeoJSON.
 - **App:** installable PWA (desktop and phone), works offline with the last known picture, with an
   optional "near me" warning when a confirmed target is close to or heading for your location.
 
 ## Run it
 
-Needs Python 3.10+ (on Windows, tick "Add Python to PATH" when installing).
+Needs Python 3.10+ (on Windows, tick "Add Python to PATH" when installing) and git.
 
 ```bash
 git clone https://github.com/inasjackw321/drone-map.git
 ```
 
-```bash
-cd drone-map
-```
+Then, every time:
 
-```bash
-pip install -r requirements.txt
-```
+* **Windows:** double-click **`start.bat`** in the `drone-map` folder.
+* **Mac / Linux:** run `./start.sh`.
 
-```bash
-python run.py
-```
+It updates to the latest version, installs what is needed and opens the map at
+http://localhost:8000. Keep its window open while you use the map; close it (or Ctrl+C) to stop.
+The first full round of channel reads takes about a minute, and the last 3–4 hours of posts
+are loaded on start. When a newer version exists, the map shows an "Update" banner.
 
-Your browser opens the map at http://localhost:8000 (open it yourself if it doesn't). Keep the
-terminal window open while you use the map; Ctrl+C stops it. The first full round of channel
-reads takes about a minute, and the last 3–4 hours of posts are loaded on start.
+By hand, the same is `git pull`, `pip install -r requirements.txt`, `python run.py`.
 
 To try it without Telegram access, run the built-in scripted scenario:
 
@@ -78,7 +90,8 @@ Telegram channels ──► scraper (t.me/s/<channel> web preview, or Telethon)
 
 * **Sources**: `dronemap/channels.json` lists every channel with its trust tier and region. Edit it
   to add or remove channels. The region tells the parser which villages a channel is likely to
-  mean.
+  mean. `"implied": "shahed"` marks a local channel whose terse posts ("⚠️ на Михайлівку",
+  "Сарни - уважно!") always mean a drone even without the word.
 * **Places**: `dronemap/gazetteer.py` is a curated list of about 500 cities, towns, regions, seas
   and launch areas, with Ukrainian and Russian spellings and case forms.
   `dronemap/data/settlements.tsv.gz` adds 32,000 villages from GeoNames. A village only counts
@@ -148,7 +161,16 @@ precise as the posts (often "near village X" or "in region Y"). Reports lag real
 mass missile attacks with dozens of parallel groups can't be separated perfectly from text. Always
 follow official air-raid alerts.
 
+## Map data
+
+* `web/data/admin.json` holds the raions (OCHA COD-AB, valid from 2023-02-01) and oblasts derived
+  from them, plus western Russian regions and the Belarus/Moldova outlines (geoBoundaries /
+  OpenStreetMap). Rebuild it with `scripts/build_admin.py` (needs `pip install shapely`, only for
+  building); its docstring lists the downloads.
+* The occupied territory is fetched at run time from the daily DeepState mirror
+  (github.com/cyterat/deepstate-map-data) and cached in `data/occupied.geojson`.
+
 ## Credits
 
-Map data and tiles © OpenStreetMap contributors (fallback tiles © Esri). Village data © GeoNames (CC BY 4.0).
-Map library: Leaflet (BSD-2).
+Districts © OCHA (CC BY-IGO). Occupied territory © DeepState. Borders and street map © OpenStreetMap
+contributors (ODbL). Village data © GeoNames (CC BY 4.0). Map library: Leaflet (BSD-2).

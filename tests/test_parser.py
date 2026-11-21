@@ -1,6 +1,6 @@
 import pytest
 
-from dronemap.gazetteer import GAZETTEER
+from dronemap.gazetteer import GAZETTEER, haversine
 from dronemap.parser import parse_message
 
 
@@ -83,7 +83,7 @@ def test_povz_is_not_origin():
 
 def test_origin_and_destination():
     s = one("Реактивний шахед з Бєлгородщини на Харків", ("kharkiv",))
-    assert label(s.origin) == "belgorod" and label(s.dest) == "kharkiv" and s.pos is None
+    assert label(s.origin) == "reg_ru_bel" and label(s.dest) == "kharkiv" and s.pos is None
 
 
 def test_arrow_route():
@@ -190,16 +190,31 @@ def test_unrelated_text():
 
 def test_alert_system_district_list():
     r = parse_message("🔴 Червоний рівень тривоги\n• Конотопський район (Сумська обл.)\n• Шосткинський район (Сумська обл.)")
-    assert r.alerts_on == {"sumy"}
+    assert r.alerts_on == {"UA5902", "UA5910"} and r.alert_level == "red"
+    r = parse_message("🟡 Жовтий рівень тривоги\n• Баштанський район (Миколаївська обл.)\n• Роздільнянський район (Одеська обл.)")
+    assert r.alerts_on == {"UA4802", "UA5114"} and r.alert_level == "yellow"
     r = parse_message("🟢 Відбій тривоги\n• Луцький район (Волинська обл.)\n• Ковельський район (Волинська обл.)")
-    assert r.alerts_off == {"volyn"}
-    # red level lifted, yellow remains: the alert stays on
-    assert not parse_message("🟡 Відбій червоної тривоги\n• Полтавський район (Полтавська обл.)").alerts_off
+    assert r.alerts_off == {"UA0708", "UA0706"}
+    # red level lifted, yellow remains
+    r = parse_message("🟡 Відбій червоної тривоги\n• Полтавський район (Полтавська обл.)")
+    assert not r.alerts_off and r.alerts_on == {"UA5308"} and r.alert_level == "yellow"
+
+
+def test_oblast_level_alert():
+    r = parse_message("🔴 Повітряна тривога в Сумська область")
+    assert r.alerts_on == {"sumy"} and r.alert_level == "red"
 
 
 def test_regional_alert_without_known_place_uses_channel_region():
-    assert parse_message("🔴 Сумський район — повітряна тривога, червоний рівень", ("sumy",)).alerts_on == {"sumy"}
-    assert parse_message("🟡 Повітряна тривога в Подільському районі!", ("odesa",)).alerts_on == {"odesa"}
+    r = parse_message("🔴 Сумський район — повітряна тривога, червоний рівень", ("sumy",))
+    assert r.alerts_on == {"UA5908"} and r.alert_level == "red"
+    assert parse_message("🟡 Повітряна тривога в Подільському районі!", ("odesa",)).alerts_on == {"UA5112"}
+    assert parse_message("Повітряна тривога!", ("poltava",)).alerts_on == {"poltava"}
+
+
+def test_raion_as_position():
+    s = one("Шахед над Богодухівським районом")
+    assert s.pos.place.key == "rUA6302" and s.pos.precision == "region"
 
 
 def test_alert_system_threat_notice_is_area_not_target():
@@ -292,3 +307,102 @@ def test_launch_site_list_is_a_notice():
 def test_city_adjective_is_not_a_village():
     r = parse_message("Шахед на Харківське шосе", ("kharkiv",))
     assert all(s.dest is None or s.dest.place.name != "Kharkivske" for s in r.sightings)
+
+
+# ------------------------------------------------------------------ Russia-side channel
+
+RU = ["luhansk", "donetsk", "zaporizhzhia", "kherson", "crimea"]
+
+
+def test_russia_danger_zones():
+    r = parse_message("Клинцы \nБрянская область \nОпасность по БПЛА сохраняется", RU, "russia")
+    assert [(z.place.key, k) for z, k in r.ru_zones] == [("klintsy", "drone")] and not r.sightings
+    r = parse_message("Брянская область \nТревога по БПЛА сохраняется", RU, "russia")
+    assert [z.place.key for z, _ in r.ru_zones] == ["reg_ru_bry"]
+    r = parse_message("Моспино, Иловайск и близлежащие \nОпасность по БПЛА \nДНР", RU, "russia")
+    assert [z.place.key for z, _ in r.ru_zones] == ["mospyne", "ilovaisk"]
+    r = parse_message("Бердянский район \nОпасность по БПЛА \nЗапорожская область РФ", RU, "russia")
+    assert [z.place.key for z, _ in r.ru_zones] == ["rUA2302"]
+
+
+def test_russia_all_clear_and_offset():
+    r = parse_message("Воронежская область \nОрловская область \nОтбой опасности по БПЛА", RU, "russia")
+    assert [z.place.key for z in r.ru_clear] == ["reg_ru_vor", "reg_ru_orl"] and not r.ru_zones
+    r = parse_message("Юг Ростовской области \nОпасность по БПЛА", RU, "russia")
+    z = r.ru_zones[0][0]
+    assert z.place.key == "reg_ru_ros" and z.lat < z.place.lat
+
+
+def test_russia_missile_danger_and_propaganda():
+    assert parse_message("Ракетная опасность. Белгород", RU, "russia").ru_zones[0][1] == "missile"
+    long_post = "Укровские кастрюли так радовались " * 12
+    assert not parse_message(long_post, RU, "russia").relevant
+
+
+# ------------------------------------------------------------------ official alert feed formats
+
+def test_city_in_alert_list_is_its_own_zone_not_the_whole_oblast():
+    r = parse_message("🟢 Відбій тривоги\n• Марганець (Дніпропетровська обл.)\n• Нікополь (Дніпропетровська обл.)", (), "official")
+    assert r.alerts_off == {"c:marhanets", "c:nikopol"}
+    r = parse_message("🔴 Червоний рівень тривоги\n• Харків (Харківська обл.)\n• Ізюмський район (Харківська обл.)", (), "official")
+    assert r.alerts_on == {"c:kharkiv", "UA6304"} and "kharkiv" not in r.alerts_on
+
+
+def test_single_zone_alert_posts():
+    r = parse_message("🔴 Ізюмський район (Харківська обл.)\nЧервоний рівень тривоги. Прямуйте в укриття!", (), "official")
+    assert r.alerts_on == {"UA6304"} and r.alert_level == "red"
+    r = parse_message("🟡 Київ\nЖовтий рівень тривоги. Прямуйте в укриття!", (), "official")
+    assert r.alerts_on == {"kyiv_city"} and r.alert_level == "yellow"
+    r = parse_message("🟢 Баштанський район (Миколаївська обл.)\nВідбій тривоги. Будьте обережні!", (), "official")
+    assert r.alerts_off == {"UA4802"}
+
+
+def test_districts_renamed_in_2024():
+    assert parse_message("🔴 Берестинський район (Харківська обл.)\nЧервоний рівень тривоги.", (), "official").alerts_on == {"UA6306"}
+    assert parse_message("🟢 Відбій тривоги\n• Самарівський район (Дніпропетровська обл.)", (), "official").alerts_off == {"UA1210"}
+
+
+def test_alert_post_with_two_sections():
+    r = parse_message("🟡 Відбій червоної тривоги\n• Полтавський район (Полтавська обл.)\n\n🟢 Відбій тривоги\n"
+                      "• Гайсинський район (Вінницька обл.)\n• Жмеринський район (Вінницька обл.)", (), "official")
+    assert r.alerts_on == {"UA5308"} and r.alert_levels == {"UA5308": "yellow"}
+    assert r.alerts_off == {'UA0506', 'UA0504'}
+
+
+# ------------------------------------------------------------------ pinpointing
+
+def test_heading_from_zi_direction():
+    s = one("🏍 Реактивний БпЛА на Дніпро зі сходу.")
+    assert label(s.dest) == "dnipro" and s.heading == 270.0
+
+
+def test_between_two_towns_is_one_target_in_the_middle():
+    s = one("БпЛА між Ніжином та Носівкою", ["chernihiv"])
+    n, m = GAZETTEER.places["nizhyn"], (50.93, 31.58)                      # Nosivka
+    assert s.pos.precision == "point" and "between" in s.pos.label
+    assert abs(s.pos.lat - (n.lat + m[0]) / 2) < 0.03 and abs(s.pos.lon - (n.lon + m[1]) / 2) < 0.03
+
+
+def test_distance_from_a_town_is_a_position_not_an_origin():
+    s = one("Шахед в 10 км на південь від Полтави", ["poltava"])
+    p = GAZETTEER.places["poltava"]
+    assert s.pos.role == "current" and s.origin is None
+    assert 9 < haversine(s.pos.lat, s.pos.lon, p.lat, p.lon) < 11 and s.pos.lat < p.lat
+    s = one("Шахед за 15 км від Кременчука курсом на північ", ["poltava"])
+    assert label(s.pos) == "kremenchuk" and s.origin is None and s.pos.dist_km == 15 and s.heading == 0.0
+
+
+def test_region_header_applies_to_the_lines_below():
+    r = parse_message("Львівщина:\nРеактивний БпЛА курсом на Львів\nРеактивний БпЛА курсом на Дрогобич", [], "recon")
+    assert [(label(s.pos), label(s.dest)) for s in r.sightings] == [("obl_lviv", "lviv"), ("obl_lviv", "drohobych")]
+
+
+def test_channel_footer_does_not_turn_a_report_into_an_alert_post():
+    r = parse_message("❗️Реактивний на Кривий Ріг\n\n🛵2х шахеди на Миколаїв.\n\nПідтримати канал☕️\n\n✅️ Чому тривога?", [], "regional")
+    assert [(s.threat, label(s.dest)) for s in r.sightings] == [("jet_shahed", "kryvyi_rih"), ("shahed", "mykolaiv")]
+    assert not r.alerts_on
+
+
+def test_dali_follow_up_is_a_destination():
+    r = parse_message("Далі Малин", ["zhytomyr"], "regional")
+    assert [(b.place.key, b.role) for b in r.bare_places] == [("malyn", "dest")]

@@ -33,8 +33,10 @@
       <path d="M16 4 L28.5 24.5 L16 21 L3.5 24.5 Z" fill="${c}" fill-opacity="0.45" stroke="${c}" stroke-width="2.2" stroke-linejoin="round"/>
       <path d="M16 4 L28.5 24.5 L16 21 L3.5 24.5 Z" fill="none" stroke="${INK}" stroke-width="0.8" stroke-dasharray="2 2"/>`,
     uav: c => `
-      <path d="M16 3 L26.5 17 L16 29 L5.5 17 Z" fill="${c}" ${S}/>
-      <circle cx="16" cy="16.5" r="3" fill="${INK}"/>`,
+      <path d="M16 20.5 L22.6 26.8 L21.1 28.4 L16 24.4 L10.9 28.4 L9.4 26.8 Z" fill="${c}" ${S}/>
+      <path d="M16 8.6 L29.2 13.6 L29.2 16.4 L16 13.9 L2.8 16.4 L2.8 13.6 Z" fill="${c}" ${S}/>
+      <path d="M16 2.6 C17.5 2.6 18.1 4.4 18.1 6.6 V24.6 L16 27.6 L13.9 24.6 V6.6 C13.9 4.4 14.5 2.6 16 2.6 Z" fill="${c}" ${S}/>
+      <circle cx="16" cy="6.4" r="1.15" fill="${INK}"/>`,
     recon: c => `
       <rect x="13.9" y="2.5" width="4.2" height="25" rx="2" fill="${c}" ${S}/>
       <rect x="1" y="9.8" width="30" height="4.8" rx="2" fill="${c}" ${S}/>
@@ -83,6 +85,24 @@
     return `<svg viewBox="0 0 32 32" width="${size}" height="${size}" aria-hidden="true">${body}</svg>`;
   }
 
+  // mix a colour with white: map icons are white silhouettes with a faint type tint (neptun style)
+  function tint(hex, amount = 0.78) {
+    const n = parseInt(hex.slice(1), 16);
+    const mix = (v) => Math.round(v + (255 - v) * amount);
+    const r = mix((n >> 16) & 255), g = mix((n >> 8) & 255), b = mix(n & 255);
+    return '#' + ((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1);
+  }
+
+  function mapSvg(threat, size = 30) {
+    const t = THREATS[threat] || THREATS.uav;
+    return svg(threat, tint(t.color, t.family === 'drone' ? 0.86 : 0.62), size);
+  }
+
+  function svgDataUrl(markup) {
+    const m = markup.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(m);
+  }
+
   function explosion(size = 26, color = '#ffb020') {
     return `<svg viewBox="0 0 32 32" width="${size}" height="${size}" aria-hidden="true">
       <path d="M16 1.5 L19 10 L27.5 5.5 L23 13.5 L31 16 L23 18.5 L27.5 26.5 L19 22 L16 30.5 L13 22 L4.5 26.5 L9 18.5 L1 16 L9 13.5 L4.5 5.5 L13 10 Z"
@@ -96,5 +116,5 @@
       <path d="M7.5 7.5 L16.5 16.5 M16.5 7.5 L7.5 16.5" stroke="#e6e9ee" stroke-width="2.4" stroke-linecap="round"/></svg>`;
   }
 
-  window.DMIcons = { THREATS, svg, explosion, kill };
+  window.DMIcons = { THREATS, svg, mapSvg, tint, svgDataUrl, explosion, kill };
 })();

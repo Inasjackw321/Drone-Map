@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from .gazetteer import GAZETTEER, NEIGHBORS, Place, destination
+from .gazetteer import GAZETTEER, NEIGHBORS, UKRAINE_OBLASTS, Place, destination, haversine
 from .settlements import SETTLEMENTS
 
 # --------------------------------------------------------------------------- threats
@@ -35,7 +35,7 @@ _W = r"(?<![\w-])"  # left word boundary that treats hyphen as part of a word
 THREAT_PATTERNS: list[tuple[str, re.Pattern]] = [(k, re.compile(p)) for k, p in [
     ("kinzhal", _W + r"(?:кинджал\w*|кинжал\w*|[хx]-?47\w*|kinzhal)"),
     ("ballistic", _W + r"(?:балісти\w*|баллисти\w*|іскандер\w*|искандер\w*|кн-?23|kn-?23|[сc]-?[34]00\b|"
-                  r"швидкісн\w*\s+ціл\w*|скоростн\w*\s+цел\w*|ballistic\w*|iskander)"),
+                  r"швидкісн\w*\s+ціл\w*|високошвидкісн\w*\s+ціл\w*|скоростн\w*\s+цел\w*|высокоскоростн\w*\s+цел\w*|ballistic\w*|iskander)"),
     ("cruise", _W + r"(?:крилат\w*|крылат\w*|калібр\w*|калибр\w*|[хx]-?(?:101|555|59|69|22|32|55)\b|"
                r"онікс\w*|оникс\w*|циркон\w*|cruise)"),
     ("missile", _W + r"(?:ракет\w*|missile\w*)|🚀"),
@@ -51,7 +51,8 @@ THREAT_PATTERNS: list[tuple[str, re.Pattern]] = [(k, re.compile(p)) for k, p in 
     ("recon", _W + r"(?:орлан\w*|zala(?![a-z])|зала(?![\w])|суперкам\w*|supercam|"
               r"розвідувальн\w*\s+(?:бпла|дрон\w*|безпілот\w*)|разведывательн\w*\s+(?:бпла|дрон\w*|беспилот\w*)|"
               r"розвідник\w*|мохаджер\w*|mohajer|форпост\w*)"),
-    ("shahed", _W + r"(?:шахед\w*|шахід\w*|шаhед\w*|герань\w*|герані\w*|мопед\w*|shahed\w*|geran\w*|"
+    ("shahed", _W + r"(?:шахед\w*|шахід\w*|шаhед\w*|герань\w*|герані\w*|мопед\w*|shahed\w*|geran\w*|бензинов\w*|поршнев\w*|"
+               r"звичайн\w*\s+(?:бпла|дрон\w*|безпілот\w*|шахед\w*)|обычн\w*\s+(?:бпла|дрон\w*|беспилот\w*|шахед\w*)|"
                r"ударн\w*\s+(?:бпла|дрон\w*|безпілот\w*|беспилот\w*))|🛵"),
     ("uav", _W + r"(?:бпла|безпілот\w*|беспилот\w*|дрон\w*|uav|бла(?![\w])|італмас\w*|италмас\w*)|🛸"),
 ]]
@@ -76,6 +77,8 @@ NEWS_RE = re.compile(_W + r"(?:внаслідок|постраждал\w*|заг
                      r"дснс|рятувальник\w*|наслідк\w*|травмован\w*|госпіталізован\w*|пострадав\w*|погиб\w*|"
                      r"поврежден\w*|разрушен\w*|последстви\w*|спасател\w*|постраждалих|жертв\w*)")
 PATH_CUE = re.compile(_W + r"(?:повз|через|минає|минули|пролітає\w*|пролетів|пролетіли|проходить|прошел|прошли|мимо|вздовж|уздовж)")
+FOOTER_RE = re.compile(r"(?:підписатис[яь]|підпишись|підписуйтесь|подписаться|подпишись|подписывайтесь|"
+                       r"підтримати\s+(?:канал|адміна|нас)|надіслати\s+новину|прислать\s+новость)(?![\w']).*$", re.M)
 SPAM_RE = re.compile(r"підпис|подпис|реклам|донат|задонат|монобанк|https?://|t\.me/|@\w{4,}|розіграш|розыгрыш")
 MOVE_CUE_RE = re.compile(_W + r"(?:курс\w*|напрям\w*|направлен\w*|над|повз|через|районі|районе|рухає\w*|летить|летять|"
                          r"летит|летят|бік|сторону|підльот\w*|подлет\w*)|→|➡")
@@ -88,13 +91,13 @@ DEST_CUE = re.compile(
     r"на\s+підльот\w*\s+до|підлітає\s+до|підлітають\s+до|на\s+подлете\s+к|"
     r"(?:летить|летять|летит|летят|рухається|рухаються|рухаєтся|движется|движутся|прямує|прямують|йде|йдуть|ідуть|"
     r"заходить|заходять|залітає|залітають|повертає|повернув\w*|розвернув\w*|змінив\w*\s+курс|"
-    r"полетів|полетіли|полетел\w*)\s+(?:на|до|в|у|к)|до|к|→|➡️?|⏩|->|=>|—>|–>|>>)\s*$")
+    r"полетів|полетіли|полетел\w*)\s+(?:на|до|в|у|к)|(?:далі|дальше)(?:\s+(?:ймовірно|можливо|напевно|мабуть|вероятно|возможно|на))?|до|к|→|➡️?|⏩|->|=>|—>|–>|>>)\s*$")
 ORIGIN_CUE = re.compile(
     r"(?<![\w'])(?:з|із|зі|від|з\s+боку|з\s+напрямку|з\s+акваторії|з\s+території|з\s+району|с\s+направления|"
     r"со\s+стороны|с|из|из\s+района|вилет\w*\s+(?:з|із)|пуск\w*\s+(?:з|із|с)|запуск\w*\s+(?:з|із|с))\s*$")
 CURRENT_CUE = re.compile(
     r"(?<![\w'])(?:над|в\s+районі|у\s+районі|районі|в\s+р-ні|у\s+р-ні|р-н|р-ні|біля|поблизу|неподалік|повз|через|в|у|"
-    r"в\s+районе|районе|около|возле|рядом\s+с|вблизи|по|околиц\w*|на\s+околиц\w*|на\s+межі\s+з?)\s*$")
+    r"в\s+районе|районе|около|возле|рядом\s+с|вблизи|по|околиц\w*|на\s+околиц\w*|на\s+межі\s+з?|між|поміж|между)\s*$")
 NA_CUE = re.compile(r"(?<![\w])на\s*$")
 HYPHEN_CUE = re.compile(r"[-–—]\s*$")
 ABBREV_TAIL = re.compile(r"(?:(?<![\w])(?:м|с|смт|сел|г|пгт|н\.\s?п|нп|ст|обл|р-н)\.?\s*|[«\"(]\s*)$")
@@ -107,6 +110,11 @@ OFFSET_LOC = re.compile(rf"(?:на|в|у)\s+(?P<dir>{DIR_WORD})(?:\s+части�
 OFFSET_REL = re.compile(r"(?P<dir>північніше|південніше|західніше|східніше|північно-західніше|північно-східніше|"
                         r"південно-західніше|південно-східніше|севернее|южнее|западнее|восточнее)\s*(?:від\s+|от\s+)?$")
 OFFSET_REL2 = re.compile(rf"на\s+(?P<dir>{DIR_WORD})\s+(?:від|от)\s*$")
+KM_OFFSET = re.compile(
+    rf"(?:(?:за|в|у|на\s+відстані|на\s+расстоянии)\s+)?(?:~|≈|близько\s+|около\s+|приблизно\s+)?(?P<km>\d{{1,3}})\s*"
+    rf"(?:-?ти\s+)?(?:км|кілометр\w*|километр\w*)\.?"
+    rf"(?:\s+(?:на\s+)?(?P<dir>{DIR_WORD}|північніше|південніше|західніше|східніше|севернее|южнее|западнее|восточнее))?"
+    rf"(?:\s+(?:від|от|до))?\s*$")
 
 HEADING_RES = [
     re.compile(rf"курс\w*\s+(?:на\s+)?(?P<dir>{DIR_WORD})(?!\s+(?:від|от)(?![\w]))"),
@@ -115,7 +123,7 @@ HEADING_RES = [
                rf"(?:на\s+)?(?P<dir>{DIR_WORD})(?!\s+(?:від|от)(?![\w]))"),
     re.compile(rf"(?:у|в)\s+(?P<dir>{DIR_WORD})\s+напрям\w*"),
 ]
-FROM_DIR_RE = re.compile(r"(?:з|із|с|со)\s+(?P<dir>півночі|півдня|сходу|заходу|північного\s+сходу|північного\s+заходу|"
+FROM_DIR_RE = re.compile(r"(?<![\w'])(?:з|із|зі|с|со)\s+(?P<dir>півночі|півдня|сходу|заходу|північного\s+сходу|північного\s+заходу|"
                          r"південного\s+сходу|південного\s+заходу|севера|юга|востока|запада|северо-востока|"
                          r"северо-запада|юго-востока|юго-запада)(?![\w])")
 
@@ -169,6 +177,7 @@ class PlaceRef:
     precision: str       # point | region
     label: str           # human readable, e.g. "north of Sumy region"
     start: int = 0
+    dist_km: float | None = None   # "за 30 км від X": that far from the place, direction unknown
 
     def as_dict(self) -> dict:
         return {"key": self.place.key, "name": self.label, "lat": round(self.lat, 4), "lon": round(self.lon, 4),
@@ -202,8 +211,10 @@ class AreaEvent:
 class ParsedMessage:
     sightings: list[Sighting] = field(default_factory=list)
     events: list[AreaEvent] = field(default_factory=list)
-    alerts_on: set[str] = field(default_factory=set)
+    alerts_on: set[str] = field(default_factory=set)      # raion ids ("UA5902") or oblast keys ("sumy")
     alerts_off: set[str] = field(default_factory=set)
+    alert_level: str = "red"                                # red | yellow
+    alert_levels: dict[str, str] = field(default_factory=dict)   # per unit, when a post mixes levels
     banners: list[tuple[str, str]] = field(default_factory=list)   # (kind, text)
     threats: list[str] = field(default_factory=list)
     places: list[str] = field(default_factory=list)
@@ -211,11 +222,14 @@ class ParsedMessage:
     clear_places: list[PlaceRef] = field(default_factory=list)
     clear_oblasts: set[str] = field(default_factory=set)
     bare_places: list[PlaceRef] = field(default_factory=list)
+    ru_zones: list[tuple[PlaceRef, str]] = field(default_factory=list)   # (place, drone|missile) from Russian sources
+    ru_clear: list[PlaceRef] = field(default_factory=list)
+    threats_cleared: list[str] = field(default_factory=list)         # "відбій загрози балістики"
 
     @property
     def relevant(self) -> bool:
         return bool(self.sightings or self.events or self.alerts_on or self.alerts_off or self.banners
-                    or self.clear_places or self.clear_oblasts)
+                    or self.clear_places or self.clear_oblasts or self.ru_zones or self.ru_clear or self.threats_cleared)
 
 
 # --------------------------------------------------------------------------- helpers
@@ -290,6 +304,10 @@ def extract_count(seg: str, threat_spans: list[tuple[str, int, int]]) -> tuple[i
                 count = int(ma.group("a") or ma.group("b") or ma.group("c"))
         if count:
             break
+    if count is None:
+        m = re.search(r"(?<!\d)(\d{1,2})(?:\s*[-–]\s*\d{1,2})?\s*шт", seg)     # "(8 шт)", "8-10шт"
+        if m:
+            count = int(m.group(1))
     if count is not None and not (1 <= count <= 30):
         count = None                                  # larger numbers are nightly totals, not one group
     group = bool(GROUP_RE.search(seg))
@@ -304,12 +322,15 @@ def _offset_label(place: Place, deg: float | None) -> str:
     return f"{names[int(deg)]} of {place.name}"
 
 
+BETWEEN_CUE = re.compile(r"(?<![\w'])(?:між|поміж|между)\s*$")
+BETWEEN_GAP = re.compile(r"^\s*(?:та|і|й|и|and|,|/|-|–)\s*$")
 SEP_GAP = re.compile(r"^\s*(?:[/,]|або|чи|та|і|й|и|или|and|or)?\s*$")
 PAREN_GAP = re.compile(r"^\s*\(\s*$")
 BORDER_CUE = re.compile(r"(?<![\w'])(?:вздовж|уздовж|по|на|біля)?\s*(?:меж[іеюа]\w*|кордон\w*)\s+(?:з|із|с)\s*$")
 LOOKBACK_DEST = re.compile(r"(?<![\w'])(?:курс\w*|напрям\w*|направлен\w*|бік|сторону|на)(?![\w'])|→|➡")
 OFFSET_ACC = re.compile(r"^на\s+(?:північ|південь|захід|схід|північний|південний|север|юг|запад|восток)")
 LOCALITY_CUE = re.compile(r"(?<![\w'])(?:в\s+районі|у\s+районі|біля|поблизу|повз|над|в\s+районе|около|возле)\s+[а-яіїєґ']")
+NOT_HERE_RE = re.compile(r"чист|без\s+загроз|не\s+фіксу|втрачен|не\s+спостеріга|загроз\w*\s+нема")
 CLEAR_RE = re.compile(r"(?<![\w'])(?:чисто|чистота|загрозу\s+знято|загроза\s+минула)(?![\w'])")
 
 
@@ -320,6 +341,19 @@ def classify_place(seg: str, start: int, end: int, place: Place, prev_end: int |
     lat, lon, precision = place.lat, place.lon, place.precision
     label = place.name
     offset_dest = False
+    dist_km = None
+    km = KM_OFFSET.search(prefix)
+    if km and 1 <= int(km.group("km")) <= 150:
+        # "за 15 км від Кременчука", "в 10 км на південь від Полтави": a position, not an origin
+        d = float(km.group("km"))
+        deg = dir_to_deg(km.group("dir")) if km.group("dir") else None
+        if deg is not None:
+            lat, lon = destination(place.lat, place.lon, deg, d)
+            label = f"{int(d)} km {_offset_label(place, deg)}"
+        elif d > 8:
+            dist_km = d
+            label = f"{int(d)} km from {place.name}"
+        return PlaceRef(place, "current", lat, lon, precision, label, start, dist_km), True
     m = OFFSET_LOC.search(prefix) or OFFSET_REL.search(prefix) or OFFSET_REL2.search(prefix)
     if m:
         deg = dir_to_deg(m.group("dir"))
@@ -390,6 +424,14 @@ def locate(seg: str, prefer_oblasts, village_prefer=(), caps: set[str] | None = 
             refs[-1] = keep
             ends[-1] = end
             continue
+        if (prev is not None and BETWEEN_GAP.match(gap) and prev.precision == "point" and ref.precision == "point"
+                and BETWEEN_CUE.search(ABBREV_TAIL.sub("", seg[max(0, prev.start - 20):prev.start]).rstrip())
+                and haversine(prev.lat, prev.lon, ref.lat, ref.lon) < 70):
+            # "між Ніжином та Носівкою": one target somewhere between the two
+            refs[-1] = PlaceRef(prev.place, "current", (prev.lat + ref.lat) / 2, (prev.lon + ref.lon) / 2, "point",
+                                f"between {prev.place.name} and {place.name}", prev.start)
+            ends[-1] = end
+            continue
         sep = prev is not None and SEP_GAP.match(gap)
         if is_village and not (explicit or sep or ROUTE_AFTER.match(seg[end:end + 4])
                                or _after_threat_word(seg[:start])):
@@ -410,8 +452,111 @@ def _after_threat_word(prefix: str) -> bool:
     return any(e >= len(tail) - 1 for _, _, e in find_threats(tail))
 
 
+def alert_units(refs: list[PlaceRef], fallback) -> set[str]:
+    """Where an alert applies: a district ("Конотопський район"), a city ("Харків"), or a whole oblast."""
+    units = set()
+    for r in refs:
+        if r.place.kind == "A":
+            units.add(r.place.key[1:])                     # district
+        elif r.place.oblast in ("kyiv_city", "sevastopol"):
+            units.add(r.place.oblast)                      # Kyiv / Sevastopol have their own polygon
+        elif r.place.kind == "R" and _ukr(r.place.oblast):
+            units.add(r.place.oblast)                      # whole oblast
+        elif _ukr(r.place.oblast):
+            units.add("c:" + r.place.key)                  # a city or community: just that place
+    return units or set(fallback)
+
+
+ALERT_HEAD = re.compile(r"^(?:🔴|🟡|🟢|відбій|червоний рівень|жовтий рівень|повітряна тривога)")
+
+
+def alert_sections(norm: str) -> list[tuple[str, str]]:
+    """Split an alert-feed post into (action, text) sections; action is red / yellow / off / none."""
+    sections: list[list[str]] = []
+    for line in norm.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        if ALERT_HEAD.match(line) or not sections:
+            sections.append([line])
+        else:
+            sections[-1].append(line)
+    out = []
+    for lines in sections:
+        text = "\n".join(lines)
+        head = lines[0]
+        if "відбій червон" in head:
+            action = "yellow"                     # red lifted, yellow level remains
+        elif head.startswith("🟢") or "відбій" in head:
+            action = "off"
+        elif head.startswith("🟡") or "жовт" in head:
+            action = "yellow"
+        elif head.startswith("🔴") or ALERT_RE.search(head) or "червон" in head:
+            action = "red"
+        else:
+            action = "none"
+        out.append((action, text))
+    # a single-zone post puts the place in the header and the level on the next line:
+    # "🔴 Ізюмський район (Харківська обл.) / Червоний рівень тривоги. Прямуйте в укриття!"
+    merged: list[tuple[str, str]] = []
+    for action, text in out:
+        if merged and action == merged[-1][0] and not GAZETTEER.find(text):
+            continue                              # the level line repeats the header's action
+        merged.append((action, text))
+    return merged
+
+
+def alert_level(text: str) -> str:
+    """UkraineAlarmSignal: 🔴 red level (sirens) / 🟡 yellow level; "відбій червоної" drops red to yellow."""
+    return "yellow" if ("жовт" in text or "відбій червон" in text or "🟡" in text) else "red"
+
+
 def _ukr(oblast: str) -> bool:
-    return not oblast.startswith(("ru_", "sea"))
+    return oblast in UKRAINE_OBLASTS
+
+
+# --------------------------------------------------------------------------- Russian-side sources
+
+RU_DANGER_RE = re.compile(_W + r"(?:опасност\w*|тревог\w*|угроз\w*|атак\w*|беспилотн\w*\s+опасност\w*|налет\w*)")
+RU_CLEAR_RE = re.compile(_W + r"(?:отбой|отбоя|отменен\w*|снят\w*)")
+RU_MISSILE_RE = re.compile(_W + r"(?:ракетн\w*|ракет\w*)")
+OFFSET_BARE = re.compile(rf"^\s*(?P<dir>{DIR_WORD})\s*$")
+
+
+def parse_russia(text: str, prefer_oblasts) -> ParsedMessage:
+    """Russian-side warnings ("Брянская область / Опасность по БПЛА", "Отбой опасности по БПЛА").
+
+    They describe areas where Ukrainian drones or missiles are expected over Russia and the occupied
+    territory. They become danger zones on a separate layer and never feed Ukrainian targets or alerts.
+    """
+    res = ParsedMessage()
+    norm = normalize(text)
+    if len(norm) > 300:                                # commentary / propaganda posts
+        return res
+    refs = []
+    for seg in split_segments(norm):
+        for r in locate(seg, prefer_oblasts, prefer_oblasts, {normalize(w) for w in CAPS_RE.findall(text)}):
+            prefix = seg[:r.start].strip()
+            m = OFFSET_BARE.match(prefix)                # "Юг Ростовской области"
+            deg = dir_to_deg(m.group("dir")) if m else None
+            if deg is not None and r.place.is_region:
+                r.lat, r.lon = destination(r.place.lat, r.place.lon, deg, 120 if r.place.kind == "R" else 25)
+                r.label = _offset_label(r.place, deg)
+            refs.append(r)
+    if not refs:
+        return res
+    res.places = list(dict.fromkeys(r.label for r in refs))
+    # a region qualifier after a town or district ("Клинцы / Брянская область") only says where it is
+    points = [r for r in refs if r.place.kind != "R"]
+    zones = points if points else refs
+    if RU_CLEAR_RE.search(norm):
+        res.ru_clear = zones
+        return res
+    kind = "missile" if RU_MISSILE_RE.search(norm) and not find_threats(norm.replace("ракетн", "")) else "drone"
+    # this channel posts bare place names while a danger is on; a danger word is not required
+    res.ru_zones = [(r, kind) for r in zones]
+    res.threats = ["missile" if kind == "missile" else "uav"]
+    return res
 
 
 # --------------------------------------------------------------------------- main entry
@@ -421,7 +566,9 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
     if not text or not text.strip():
         return res
     prefer_oblasts = list(prefer_oblasts)
-    norm = normalize(text)
+    if tier == "russia":
+        return parse_russia(text, prefer_oblasts)
+    norm = FOOTER_RE.sub("", normalize(text))      # "Підписатися на <channel> | Запоріжжя UA" is not a place
     if len(norm) > 1200 or SUMMARY_RE.search(norm):
         res.summary = True
         res.threats = best_by_family([t for t, _, _ in find_threats(norm)])
@@ -441,17 +588,26 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
     res.threats = msg_threats
     all_refs = [r for i in range(len(segments)) for r in seg_refs[i]]
     res.places = list(dict.fromkeys(r.label for r in all_refs))
-    msg_oblasts = list(dict.fromkeys(r.place.oblast for r in all_refs if _ukr(r.place.oblast)))
     single_region = prefer_oblasts if tier == "regional" and len(prefer_oblasts) <= 2 else []
 
-    # ---- alert-system style posts: a header line and a list of districts
-    if not msg_threats or (ALERT_RE.search(norm) and not MOVE_CUE_RE.search(norm)):
-        if ALLCLEAR_RE.search(norm):
-            if "червон" not in norm:                       # "відбій червоної тривоги" = yellow level remains
-                res.alerts_off.update(msg_oblasts or single_region)
-            return res
-        if ALERT_RE.search(norm):
-            res.alerts_on.update(msg_oblasts or single_region)
+    # ---- alert-system style posts: one or more sections, each a header and a list of districts
+    #      ("🟡 Відбій червоної тривоги / • A / 🟢 Відбій тривоги / • B / • C" = A stays yellow, B and C clear)
+    if not msg_threats or (ALERT_RE.search(norm) and not MOVE_CUE_RE.search(norm)
+                           and not any(r.role == "dest" for r in all_refs)):
+        if ALLCLEAR_RE.search(norm) or "відбій" in norm or ALERT_RE.search(norm):
+            sections = alert_sections(norm)
+            for i, (action, sec_text) in enumerate(sections):
+                refs_here = [r for seg in split_segments(sec_text) for r in locate(seg, prefer_oblasts, village_prefer, caps)
+                             if _ukr(r.place.oblast)]
+                fallback = single_region if len(sections) == 1 else []
+                units = alert_units(refs_here, fallback)
+                if action == "off":
+                    res.alerts_off.update(units)
+                elif action in ("red", "yellow"):
+                    res.alerts_on.update(units)
+                    for u in units:
+                        res.alert_levels[u] = action
+                    res.alert_level = action
             return res
 
     # ---- "в області чисто", "Кременчук поки чисто"
@@ -459,6 +615,11 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
         res.clear_places = [r for r in all_refs if _ukr(r.place.oblast)]
         if not res.clear_places:
             res.clear_oblasts = set(single_region)
+        return res
+
+    # ---- "Відбій загрози балістики": the threat is over, clear its warnings
+    if msg_threats and THREAT_AREA_RE.search(norm) and (ALLCLEAR_RE.search(norm) or "відбій" in norm or "знято" in norm):
+        res.threats_cleared = msg_threats
         return res
 
     # ---- threat notices without any movement ("Загроза застосування БПЛА. Перейдіть в укриття!")
@@ -473,9 +634,11 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
             res.banners.append(("threat:" + msg_threats[0], norm))
         return res
 
-    inherited: list[str] = msg_threats[:1] if len(msg_threats) == 1 else []
+    distinct = {t for t in msg_threat_list}
+    inherited: list[str] = msg_threats[:1] if len(distinct) == 1 else []
     pending_banners: list[tuple[str, str]] = []
     is_news = bool(NEWS_RE.search(norm))            # aftermath / news report: feed only, nothing live to plot
+    header: PlaceRef | None = None                  # "Сумщина:" line heading a list of reports
 
     for i, seg in enumerate(segments):
         if SPAM_RE.search(seg) and not find_threats(seg):
@@ -484,10 +647,16 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
             continue                                  # prose / commentary, not a live report line
         tspans = find_threats(seg)
         seg_threats = best_by_family([t for t, _, _ in tspans])
+        refs = seg_refs[i]
+        if (not seg_threats and refs and i + 1 < len(segments) and all(r.precision == "region" for r in refs)
+                and (seg.rstrip().endswith(":") or len(seg) <= 24) and not ALLCLEAR_RE.search(seg)
+                and not CLEAR_RE.search(seg)):
+            header = refs[-1]                         # the lines below are in this region
+            header.role = "current"
+            continue
         if seg_threats:
             inherited = seg_threats
         threats_here = seg_threats or inherited
-        refs = seg_refs[i]
 
         heading = None
         for rx in HEADING_RES:
@@ -502,7 +671,6 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
                 d = dir_to_deg(fm.group("dir"))
                 heading = (d + 180) % 360 if d is not None else None
 
-        oblasts = list(dict.fromkeys(r.place.oblast for r in refs if _ukr(r.place.oblast)))
         has_move_cue = bool(MOVE_CUE_RE.search(seg)) or any(r.role in ("dest", "origin") for r in refs)
         is_allclear = bool(ALLCLEAR_RE.search(seg))
         is_alert = bool(ALERT_RE.search(seg)) and not is_allclear
@@ -514,11 +682,12 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
         # ---- air-raid alert state (region level)
         if is_allclear:
             if "червон" not in seg:
-                res.alerts_off.update(oblasts or single_region)
+                res.alerts_off.update(alert_units(refs, single_region))
             if not threats_here or not has_move_cue:
                 continue
         if is_alert:
-            res.alerts_on.update(oblasts or single_region)
+            res.alerts_on.update(alert_units(refs, single_region))
+            res.alert_level = alert_level(seg)
 
         # ---- aviation notices
         if AVIATION_RE.search(seg) and (TAKEOFF_RE.search(seg) or is_threat_area):
@@ -529,13 +698,15 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
         current = [r for r in refs if r.role == "current"]
         dests = [r for r in refs if r.role == "dest"]
         origins = [r for r in refs if r.role == "origin"]
+        if header is not None and not current and (dests or origins):
+            current = [header]                        # "Сумщина: / БпЛА курсом на Шалигине"
 
         if is_news and not is_expl:
             continue
         # ---- shot down / explosions
         if is_kill:
             count, _ = extract_count(seg, tspans)
-            kill_places = current or refs
+            kill_places = current or refs or ([header] if header is not None else [])
             for r in kill_places[-1:]:
                 res.events.append(AreaEvent("kill", threats_here[0] if threats_here else None, r, count, seg))
             if not kill_places and threats_here:
@@ -638,6 +809,6 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
         res.banners += pending_banners[:1]
     # a short follow-up that only names places ("Гостомель"): the fusion step links it to the
     # channel's previous report
-    if not msg_threats and not res.relevant and all_refs and len(norm) <= 80:
+    if not msg_threats and not res.relevant and all_refs and len(norm) <= 80 and not NOT_HERE_RE.search(norm):
         res.bare_places = all_refs
     return res

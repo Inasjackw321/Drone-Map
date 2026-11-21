@@ -109,6 +109,7 @@ class WebScraper:
         self.on_change = on_change
         self.poll_scale = poll_scale
         self.backfill_s = backfill_hours * 3600
+        self.backfill = {ch["handle"]: ch.get("backfill_hours", backfill_hours) * 3600 for ch in channels}
         self.sem = asyncio.Semaphore(concurrency)
         self.limiter = RateLimiter(rate)
         self.status: dict[str, SourceStatus] = {}
@@ -151,10 +152,21 @@ class WebScraper:
                 if not has_preview:
                     st.state, st.error, st.failures = "no_preview", "channel has web preview disabled or is private", 0
                     return
-                # first run: page back until we cover the backfill window
-                if st.last_ok is None and msgs:
+                # page back: on the first run until the history window is covered, later until we
+                # reach what we already have (a busy channel can post more than one page between reads)
+                bf = self.backfill.get(st.handle, self.backfill_s)
+                known = self.store.last_id(st.handle)
+                first = st.last_ok is None or not known
+                limit = (40 if bf > 4 * 3600 else 3) if first else 10
+
+                def need_more() -> bool:
+                    if first:
+                        return min(m.ts for m in msgs) > time.time() - bf
+                    return min(m.msg_id for m in msgs) > known
+
+                if msgs:
                     pages = 0
-                    while pages < 3 and min(m.ts for m in msgs) > time.time() - self.backfill_s:
+                    while pages < limit and need_more():
                         before = min(m.msg_id for m in msgs)
                         r2 = await self._get(f"{BASE}{st.handle}?before={before}")
                         if r2.status_code != 200:
@@ -164,7 +176,7 @@ class WebScraper:
                             break
                         msgs = older + msgs
                         pages += 1
-                cutoff = time.time() - self.backfill_s
+                cutoff = time.time() - bf
                 msgs = [m for m in msgs if m.ts >= cutoff]
                 changed = self.store.upsert(msgs)
                 st.posts_seen = max(st.posts_seen, len(msgs))

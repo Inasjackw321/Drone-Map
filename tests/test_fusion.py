@@ -3,6 +3,7 @@ import random
 from dronemap.demo import SCRIPT
 from dronemap.engine import Config, Engine
 from dronemap.fusion import MsgRef, run_fusion
+from dronemap.gazetteer import GAZETTEER, haversine
 from dronemap.parser import parse_message
 from dronemap.store import RawMessage
 
@@ -168,3 +169,125 @@ def test_clear_report_ends_nearby_track():
 def test_generic_missile_does_not_ride_ballistic_speed():
     snap = fuse([(0, "kpszsu", "Балістика на Київ"), (3, "kpszsu", "Ракета над Львовом")], 4)
     assert len(snap["tracks"]) == 2
+
+
+def test_russia_zones_layer_is_separate_and_expires():
+    CH["lpr1_treugolnik"] = {"tier": "russia", "regions": ["luhansk", "donetsk", "zaporizhzhia", "kherson", "crimea"]}
+    msgs = [(0, "lpr1_treugolnik", "Брянская область \nТревога по БПЛА"),
+            (1, "lpr1_treugolnik", "Клинцы \nБрянская область \nОпасность по БПЛА"),
+            (2, "lpr1_treugolnik", "Воронежская область \nОпасность по БПЛА")]
+    snap = fuse(msgs, 5)
+    assert not snap["tracks"] and not snap["alerts"]
+    assert {(z["name"], z["unit"]) for z in snap["ru_zones"]} == {
+        ("Брянская обл.", "ru_bry"), ("Klintsy", None), ("Воронежская обл.", "ru_vor")}
+    snap = fuse(msgs + [(4, "lpr1_treugolnik", "Брянская область \nОтбой опасности по БПЛА")], 5)
+    assert [z["name"] for z in snap["ru_zones"]] == ["Воронежская обл."]     # town inside Bryansk cleared too
+    assert fuse(msgs, 200)["ru_zones"] == []
+
+
+# ------------------------------------------------------------------ duplicates (several channels, one group)
+
+def test_lagging_reports_of_one_group_stay_one_target():
+    CH["raketa_trevoga"] = {"tier": "aggregator", "regions": []}
+    CH["inforomen"] = {"tier": "regional", "regions": ["sumy"]}
+    snap = fuse([
+        (0, "PoltavaRadar", "7 шахедів над Хоролом, курс на Лубни"),
+        (3, "raketa_trevoga", "Полтавщина: 7 БпЛА на Лубни/Пирятин"),
+        (6, "inforomen", "Полтавщина: бензинові повз Пирятин на Яготин (8 шт)"),
+    ], 7)
+    live = [t for t in snap["tracks"] if t["status"] == "active"]
+    assert len(live) == 1
+    assert live[0]["count"] == 8                      # largest estimate, never the sum
+
+
+def test_destination_only_drone_reports_are_placed_just_before_the_target():
+    CH["raketa_trevoga"] = {"tier": "aggregator", "regions": []}
+    # an aggregator alone never puts a guessed position on the map
+    snap = fuse([(0, "raketa_trevoga", "Полтавщина: 5 БПЛА на Рокиту, 2 на Лубни")], 1)
+    assert snap["tracks"] == []
+    # a regional channel's "Шахед на Полтаву": one icon a short way before Poltava, heading there,
+    # and a second channel saying the same does not add another one
+    snap = fuse([(0, "PoltavaRadar", "Шахед на Полтаву"),
+                 (3, "kpszsu", "🛵 БпЛА на Полтаву")], 4)
+    assert len(snap["tracks"]) == 1
+    t = snap["tracks"][0]
+    assert t["precision"] == "approx" and t["dest"]["name"] == "Poltava"
+    assert 8 < haversine(t["lat"], t["lon"], 49.589, 34.551) < 25
+    # a missile heading somewhere is still worth an early warning
+    snap = fuse([(0, "kpszsu", "Балістика на Полтаву")], 1)
+    assert len(snap["tracks"]) == 1
+
+
+def test_ordinary_and_jet_shaheds_are_different_targets():
+    snap = fuse([(0, "PoltavaRadar", "2 звичайних БпЛА над Полтавою"),
+                 (1, "PoltavaRadar", "Реактивний над Полтавою")], 2)
+    assert sorted(t["threat"] for t in snap["tracks"]) == ["jet_shahed", "shahed"]
+
+
+def test_generic_report_folds_into_nearby_specific_target():
+    snap = fuse([(0, "PoltavaRadar", "3 шахеди над Решетилівкою, курс на Миргород"),
+                 (2, "kpszsu", "БпЛА на Полтавщині курсом на Миргород")], 3)
+    assert len(snap["tracks"]) == 1 and snap["tracks"][0]["threat"] == "shahed"
+
+
+def test_groups_flying_opposite_ways_stay_apart():
+    snap = fuse([(0, "PoltavaRadar", "Шахед над Хоролом, курс на Лубни"),
+                 (1, "PoltavaRadar", "Шахед над Семенівкою, курс на Кременчук")], 2)
+    assert len(snap["tracks"]) == 2
+
+
+def test_only_the_alert_feed_sets_alert_colours():
+    chans = {**CH, "UkraineAlarmSignal": {"tier": "official", "regions": [], "alerts": True},
+             "vin_info_ppo": {"tier": "regional", "regions": ["vinnytsia"]}}
+    msgs = [(0, "vin_info_ppo", "Повітряна тривога!"),
+            (1, "UkraineAlarmSignal", "🟡 Жовтий рівень тривоги\n• Вінницький район (Вінницька обл.)"),
+            (2, "UkraineAlarmSignal", "🔴 Червоний рівень тривоги\n• Харків (Харківська обл.)")]
+    items = []
+    for i, (t, ch, text) in enumerate(msgs):
+        meta = chans[ch]
+        items.append((MsgRef(ch, i + 1, T0 + t * 60, meta["tier"], text), parse_message(text, meta["regions"], meta["tier"])))
+    snap = run_fusion(items, chans, None, T0 + 5 * 60)
+    zones = {(a["id"], a["kind"], a["level"]) for a in snap["alerts"]}
+    assert zones == {("UA0502", "raion", "yellow"), ("c:kharkiv", "city", "red")}   # no whole-oblast spill-over
+
+
+def test_threat_all_clear_removes_its_notice():
+    CH["monitor1654"] = {"tier": "regional", "regions": ["kharkiv"]}
+    snap = fuse([(0, "kpszsu", "Загроза застосування балістичного озброєння з півдня!")], 1)
+    assert snap["banners"]
+    snap = fuse([(0, "kpszsu", "Загроза застосування балістичного озброєння з півдня!"),
+                 (3, "monitor1654", "Відбій загрози балістики✔️")], 4)
+    assert snap["banners"] == []
+
+
+def test_header_region_report_is_placed_near_the_target_not_mid_region():
+    CH["sumyregion"] = {"tier": "regional", "regions": ["sumy"]}
+    snap = fuse([(0, "kpszsu", "Сумщина:\nБпЛА курсом на Шалигине")], 1)
+    t = snap["tracks"][0]
+    assert t["precision"] == "approx" and haversine(t["lat"], t["lon"], 51.57, 34.11) < 20      # Shalyhyne
+
+
+def test_stated_direction_sets_the_side_of_the_estimate():
+    snap = fuse([(0, "kpszsu", "🏍 Реактивний БпЛА на Дніпро зі сходу.")], 1)
+    t = snap["tracks"][0]
+    d = GAZETTEER.places["dnipro"]
+    assert t["lon"] > d.lon + 0.1 and abs(t["lat"] - d.lat) < 0.05      # east of Dnipro, flying west
+
+
+def test_passed_a_town_on_the_way_to_another():
+    snap = fuse([(0, "kpszsu", "2х реактивні на Дніпропетровщині від Близнюків ідуть на Юріївку.")], 1)
+    t = snap["tracks"][0]
+    assert t["precision"] == "approx" and haversine(t["lat"], t["lon"], 48.85, 36.55) < 10      # Blyzniuky
+
+
+def test_short_follow_ups_continue_the_channels_last_report():
+    CH["zhytomyr_nebo"] = {"tier": "regional", "regions": ["zhytomyr"]}
+    snap = fuse([(0, "zhytomyr_nebo", "Реактивний над Коростенем"),
+                 (6, "zhytomyr_nebo", "Далі Малин")], 7)
+    assert len(snap["tracks"]) == 1 and snap["tracks"][0]["dest"]["name"] == "Malyn"
+
+
+def test_channels_with_an_implied_threat():
+    CH["cherkasy_monitor"] = {"tier": "regional", "regions": ["cherkasy"], "implied": "uav"}
+    snap = fuse([(0, "cherkasy_monitor", "⚠️ повз Золотоношу на Київщину")], 1)
+    assert len(snap["tracks"]) == 1 and snap["tracks"][0]["place"] == "Zolotonosha"
