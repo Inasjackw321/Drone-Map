@@ -19,7 +19,6 @@
     selected: null, tab: 'targets',
     hidden: new Set(prefs.get('hidden', [])),
     showUnconfirmed: prefs.get('showUnconfirmed', true),
-    showHistory: prefs.get('showHistory', true),
     showAlerts: prefs.get('alertsOn', true),
     showOccupied: prefs.get('showOccupied', true),
     showRussia: prefs.get('showRussia', true),
@@ -81,7 +80,7 @@
   // ---------------------------------------------------------------- predicted movement
   // Between reports a target keeps flying: its icon advances along the reported destination or
   // heading at its observed (or typical) speed. A new report re-anchors it.
-  const PREDICT_MIN = { shahed: 20, uav: 20, gerbera: 20, jet_shahed: 10, cruise: 8, missile: 6 };
+  const PREDICT_MIN = { shahed: 25, uav: 25, gerbera: 25, jet_shahed: 12, cruise: 10, missile: 8 };
   const SPEED_RANGE = { shahed: [120, 220], uav: [120, 220], gerbera: [100, 200], jet_shahed: [300, 550], cruise: [550, 900], missile: [550, 900] };
   function bearing(a, b) {
     const p1 = toRad(a.lat), p2 = toRad(b.lat), dl = toRad(b.lon - a.lon);
@@ -125,92 +124,85 @@
     return `<b>${esc(tLabel(t))}</b> · ${where}${dest}${est}<br><span style="color:var(--muted)">last report ${ago(t.last_seen)} · ${Math.round(t.confidence * 100)}% confidence${unc}</span>`;
   }
 
-  const drawn = new Map();       // track id -> { t, group, marker, est, anchor, iconKey }
+  // Targets are drawn as icons only: where each one is now (estimated between reports), pointing
+  // and moving in its direction of travel. When a new report arrives the icon glides to the
+  // corrected position instead of jumping.
+  const drawn = new Map();       // track id -> { t, marker, iconKey, pos, glide, rot }
+  const GLIDE_MS = 1600;
 
-  function iconFor(t, rot) {
+  function iconFor(t) {
     const sel = S.selected === t.id;
     const hot = ['ballistic', 'kinzhal'].includes(t.threat) && t.status === 'active';
-    const cls = ['mk', t.status, t.confirmed ? '' : 'unconf', sel ? 'sel' : '', t.precision === 'inbound' ? 'inbound' : '', hot ? 'hot' : ''].join(' ');
+    const cls = ['mk', t.status, t.confirmed ? '' : 'unconf', sel ? 'sel' : '', t.precision === 'inbound' ? 'inbound' : '',
+      t.precision === 'region' ? 'approx' : '', hot ? 'hot' : ''].join(' ');
     const badge = t.count > 1 ? `<span class="mk-n">${t.count}</span>` : '';
-    const key = [cls, t.threat, t.count, Math.round(rot / 5)].join('|');
     const size = info(t.threat).family === 'drone' ? 26 : 28;          // drones a touch smaller: "mini drones"
-    return { key, icon: L.divIcon({
+    return { key: [cls, t.threat, t.count].join('|'), icon: L.divIcon({
       className: '', iconSize: [30, 30], iconAnchor: [15, 15],
-      html: `<div class="${cls}" style="--c:${info(t.threat).color}"><div class="mk-rot" style="transform:rotate(${rot}deg)">${mapSvg(t.threat, size)}</div>${badge}</div>`,
+      html: `<div class="${cls}" style="--c:${info(t.threat).color}"><div class="mk-rot">${mapSvg(t.threat, size)}</div>${badge}</div>`,
     }) };
   }
 
   function upsertTrack(t) {
-    const c = tint(info(t.threat).color, 0.35);
-    const sel = S.selected === t.id;
-    const faded = t.status !== 'active' || !t.confirmed;
     let d = drawn.get(t.id);
     if (!d) {
-      d = { group: L.layerGroup().addTo(layers.tracks), marker: null, iconKey: '' };
-      drawn.set(t.id, d);
-    }
-    d.t = t;
-    d.group.clearLayers();
-    const real = t.points.filter(p => p.precision !== 'inbound');
-    if ((S.showHistory || sel) && real.length > 1) {
-      // coarse leading points (region centre / launch area) get a faint dashed leg, observed points a solid line
-      const firstExact = real.findIndex(p => p.precision === 'point');
-      const solid = firstExact >= 0 ? real.slice(firstExact) : [];
-      const lead = firstExact > 0 ? real.slice(0, firstExact + 1) : (firstExact < 0 ? real : []);
-      if (lead.length > 1) {
-        L.polyline(lead.map(p => [p.lat, p.lon]), { color: c, weight: 1.8, opacity: faded ? 0.25 : 0.5, dashArray: '3 7', interactive: false }).addTo(d.group);
-      }
-      if (solid.length > 1) {
-        const ll = solid.map(p => [p.lat, p.lon]);
-        L.polyline(ll, { color: '#0b0e12', weight: sel ? 6.5 : 4.6, opacity: faded ? 0.25 : 0.55, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(d.group);
-        L.polyline(ll, { color: c, weight: sel ? 3.6 : 2.4, opacity: faded ? 0.4 : 0.95, lineCap: 'round', lineJoin: 'round',
-          dashArray: t.confirmed ? null : '6 7', interactive: false }).addTo(d.group);
-      }
-      real.slice(0, -1).forEach(p => {
-        L.circleMarker([p.lat, p.lon], { radius: sel ? 3.6 : 2.6, color: '#0b0e12', weight: 1, fillColor: c, fillOpacity: faded ? 0.4 : 1 })
-          .bindTooltip(`${esc(p.place)} · ${clock(p.ts)}`, { className: 'dm-tip', direction: 'top' })
-          .on('click', () => select(t.id, false))
-          .addTo(d.group);
-      });
-    }
-    if (t.precision === 'region' && t.status !== 'ended') {
-      L.circle([t.lat, t.lon], { radius: 28000, color: c, weight: 1, opacity: 0.45, fillOpacity: 0.06, dashArray: '3 5', interactive: false }).addTo(d.group);
-    }
-    // estimated leg since the last report (filled in by tick())
-    d.est = L.polyline([], { color: c, weight: 1.6, opacity: 0.7, dashArray: '1 5', lineCap: 'round', interactive: false }).addTo(d.group);
-    d.anchor = L.circleMarker([t.lat, t.lon], { radius: 3.2, color: c, weight: 1.4, fill: true, fillColor: '#0b0e12', fillOpacity: 1, opacity: 0, interactive: false }).addTo(d.group);
-    if (!d.marker) {
+      d = { marker: null, iconKey: '', pos: null, glide: null, rot: null };
       d.marker = L.marker([t.lat, t.lon], { riseOnHover: true, keyboard: true })
         .bindTooltip(() => tipHtml(d.t), { className: 'dm-tip', direction: 'top', offset: [0, -15] })
         .on('click', () => select(d.t.id, false))
         .addTo(layers.markers);
+      drawn.set(t.id, d);
+    } else if (d.pos && (d.t.last_seen !== t.last_seen || d.t.lat !== t.lat || d.t.lon !== t.lon)) {
+      d.glide = { from: d.pos, start: performance.now() };            // new report: glide to it
     }
+    d.t = t;
+    const { key, icon } = iconFor(t);
+    if (key !== d.iconKey) { d.marker.setIcon(icon); d.iconKey = key; d.rot = null; }
     d.marker.setZIndexOffset(zFor(t));
-    d.iconKey = '';
-    placeTrack(d);
+    placeTrack(d, performance.now());
   }
 
-  function placeTrack(d) {
+  function placeTrack(d, nowMs) {
     const t = d.t;
     const p = predicted(t);
+    let lat = p.lat, lon = p.lon;
+    if (d.glide) {
+      const k = Math.min(1, (nowMs - d.glide.start) / GLIDE_MS);
+      const e = k < 0.5 ? 2 * k * k : 1 - (2 - 2 * k) ** 2 / 2;      // ease in-out
+      lat = d.glide.from[0] + (lat - d.glide.from[0]) * e;
+      lon = d.glide.from[1] + (lon - d.glide.from[1]) * e;
+      if (k >= 1) d.glide = null;
+    }
+    d.pos = [lat, lon];
+    d.marker.setLatLng(d.pos);
     const rot = t.precision === 'inbound' ? 0 : (p.brg ?? t.heading ?? 0);
-    const { key, icon } = iconFor(t, rot);
-    if (key !== d.iconKey) { d.marker.setIcon(icon); d.iconKey = key; }
-    d.marker.setLatLng([p.lat, p.lon]);
-    d.est.setLatLngs(p.est ? [[t.lat, t.lon], [p.lat, p.lon]] : []);
-    d.anchor.setStyle({ opacity: p.est ? 0.9 : 0, fillOpacity: p.est ? 1 : 0 });
+    if (d.rot === null || Math.abs(rot - d.rot) > 0.5) {
+      const el = d.marker.getElement()?.querySelector('.mk-rot');
+      if (el) { el.style.transform = `rotate(${rot}deg)`; d.rot = rot; }
+    }
   }
 
+  // the map shows live targets only; ended ones stay in the list
+  const mapTracks = () => visible().filter(t => t.status !== 'ended');
+
   function renderTracks() {
-    const vis = visible();
+    const vis = mapTracks();
     const ids = new Set(vis.map(t => t.id));
     for (const [id, d] of drawn) {
-      if (!ids.has(id)) { layers.tracks.removeLayer(d.group); layers.markers.removeLayer(d.marker); drawn.delete(id); }
+      if (!ids.has(id)) { layers.markers.removeLayer(d.marker); drawn.delete(id); }
     }
     for (const t of vis.slice().reverse()) upsertTrack(t);
   }
 
-  setInterval(() => { if (!document.hidden) for (const d of drawn.values()) placeTrack(d); }, 1000);
+  let lastFrame = 0;
+  function frame(ts) {
+    if (!document.hidden && ts - lastFrame > 80) {                    // ~12 updates a second is smooth enough
+      lastFrame = ts;
+      for (const d of drawn.values()) placeTrack(d, ts);
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
 
   function drawEvent(e) {
     if (e.threat && S.hidden.has(e.threat)) return;
@@ -319,7 +311,6 @@
       ${svg(k, null, 16)}${esc(info(k).short)} <span class="n">${counts[k] || 0}</span></button>`);
     const opt = (key, label, title) => `<button class="chip opt ${S[key] ? 'on' : ''}" data-opt="${key}" title="${title}">${label}</button>`;
     chips.push(opt('showUnconfirmed', 'Unconfirmed', 'Show reports that only aggregators have made'));
-    chips.push(opt('showHistory', 'Paths', 'Show the path each target has flown'));
     chips.push(opt('showAlerts', 'Alerts', 'Shade districts under air-raid alert (red / yellow level)'));
     chips.push(opt('showOccupied', 'Occupied', 'Occupied territory (DeepState)'));
     const ru = (S.state?.ru_zones || []).length;
@@ -495,8 +486,8 @@
       <div class="section-title">How it works</div>
       <p class="hint">Each target merges reports from several channels. Official sources weigh most, then reconnaissance and regional observers.
       Aggregators only count when they agree with someone else; a target seen only by aggregators is shown faded with a “?”.
-      The solid line is the path reported so far. Between reports the icon keeps moving along its reported course at its estimated speed
-      (dotted leg), and jumps to the real position when the next report arrives.</p>`;
+      Each icon sits where the target is now and points the way it is flying. Between reports it keeps moving along its reported
+      course at its estimated speed, and glides to the real position when the next report arrives.</p>`;
     $('#radiusSel').onchange = e => { S.radius = +e.target.value; prefs.set('radius', S.radius); drawMe(); checkNear(); };
     $('#gpsBtn').onclick = locate;
     $('#pickBtn').onclick = () => { S.pickingMe = true; toast('Tap the map to set your location'); collapseSheet(); };

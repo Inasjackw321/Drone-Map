@@ -11,9 +11,10 @@ reports into tracks.
 - **Every threat type has its own white silhouette:** Shahed, jet Shahed (Geran-3), Gerbera
   decoy, recon UAV (Orlan/ZALA), Lancet, Molniya, FPV, unknown UAV, cruise missile, ballistic
   missile, Kinzhal, unknown missile, guided bomb (KAB). Icons rotate to the heading.
-- **Tracks and predicted movement:** reports from different channels are chained into one track per
-  group, and the line shows the path reported so far. Between reports the icon keeps moving along its
-  reported course at its estimated speed, then jumps to the real position when the next report arrives.
+- **Detect, locate, move:** reports from different channels are fused into one target per group. The map
+  shows each target as an icon at its estimated current position, pointing the way it flies. Between
+  reports it keeps moving along its reported course at its estimated speed, and glides to the real
+  position when the next report arrives. No trails are drawn; ended targets leave the map.
 - **Russia layer:** drone and missile danger over Russia and the occupied territory, announced by
   Russian-side channels (`@lpr1_treugolnik`), shown in cyan as its own layer. It never mixes with
   Ukrainian targets or alerts.
@@ -22,7 +23,7 @@ reports into tracks.
   agree with someone else, so a target seen only by aggregators is shown faded with a "?".
   Impossible jumps (speed and heading checks), stale targets and shot-down targets are handled.
 - **Snapshot:** press the camera button, drag a box over any area, and download a clean infographic
-  (PNG), with paths, icons, alerts, counts, legend and scale, or the data as GeoJSON.
+  (PNG), with targets, alerts, counts, legend and scale, or the data as GeoJSON.
 - **App:** installable PWA (desktop and phone), works offline with the last known picture, with an
   optional "near me" warning when a confirmed target is close to or heading for your location.
 

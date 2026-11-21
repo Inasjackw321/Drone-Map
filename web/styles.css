@@ -334,3 +334,9 @@ a { color: var(--accent); }
 .filters::-webkit-scrollbar { display: none; }
 .chip { padding: 3px 9px 3px 4px; font-size: 11.5px; gap: 4px; background: color-mix(in srgb, var(--panel) 88%, transparent); }
 .chip.opt { padding-left: 9px; }
+
+/* targets known only to region level: soft halo instead of an uncertainty circle */
+.mk.approx::before { content: ""; position: absolute; inset: -9px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,.22) 0%, rgba(255,255,255,.06) 55%, transparent 72%); }
+.mk.approx .mk-rot { opacity: .85; }
+.mk .mk-rot { transition: transform .6s ease; }

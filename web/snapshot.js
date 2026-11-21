@@ -153,27 +153,12 @@ window.DMSnapshot = (() => {
       ctx.textAlign = 'left'; text(n, X(lon) + 8, Y(lat), 17, '#ffffff', 600); ctx.textAlign = 'center';
     }
 
-    // tracks: path so far, estimated leg, icon at the estimated position
+    // targets: icons at their estimated current position, pointing the way they fly (no trails)
     const shown = tracks.filter(t => {
+      if (t.status === 'ended') return false;
       const p = predicted(t);
-      return inView(p.lat, p.lon, 0.3) || t.points.some(q => inView(q.lat, q.lon));
+      return inView(p.lat, p.lon, 0.1);
     });
-    for (const t of shown) {
-      const c = tint((THREATS[t.threat] || THREATS.uav).color, 0.35);
-      const pts = t.points.filter(q => q.precision === 'point');
-      if (pts.length > 1) {
-        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-        ctx.beginPath(); pts.forEach((q, i) => (i ? ctx.lineTo(X(q.lon), Y(q.lat)) : ctx.moveTo(X(q.lon), Y(q.lat))));
-        ctx.strokeStyle = 'rgba(11,14,18,0.6)'; ctx.lineWidth = 7; ctx.stroke();
-        ctx.strokeStyle = c; ctx.lineWidth = 3.4; ctx.setLineDash(t.confirmed ? [] : [10, 10]); ctx.stroke(); ctx.setLineDash([]);
-        for (const q of pts.slice(0, -1)) { ctx.beginPath(); ctx.arc(X(q.lon), Y(q.lat), 3.6, 0, Math.PI * 2); ctx.fillStyle = c; ctx.fill(); }
-      }
-      const p = predicted(t);
-      if (p.est) {
-        ctx.beginPath(); ctx.moveTo(X(t.lon), Y(t.lat)); ctx.lineTo(X(p.lon), Y(p.lat));
-        ctx.setLineDash([2, 7]); ctx.strokeStyle = c; ctx.lineWidth = 2.4; ctx.stroke(); ctx.setLineDash([]);
-      }
-    }
     const icons = await Promise.all(shown.map(t => image(mapSvg(t.threat, 64))));
     const boom = await image(explosion(48));
     for (const e of state.events || []) {
@@ -257,7 +242,7 @@ window.DMSnapshot = (() => {
       lx += w + 18;
     }
     ctx.fillStyle = '#6f7a8a'; ctx.font = `400 13.5px ${FONT}`;
-    ctx.fillText('Fused from public Telegram monitoring channels. Lines: reported path. Dotted: estimated since the last report. ' +
+    ctx.fillText('Fused from public Telegram monitoring channels. Icons: estimated current position, pointing in the direction of travel. ' +
       'Districts © OCHA · Occupied © DeepState · Borders © OpenStreetMap', 32, fy + FOOT - 22);
     return cv;
   }
@@ -266,13 +251,12 @@ window.DMSnapshot = (() => {
     const inB = (lat, lon) => bounds.contains([lat, lon]);
     const feats = [];
     for (const t of tracks) {
-      if (!t.points.some(q => inB(q.lat, q.lon)) && !inB(t.lat, t.lon)) continue;
+      if (t.status === 'ended') continue;
       const p = predicted(t);
+      if (!inB(p.lat, p.lon)) continue;
       const props = { id: t.id, type: t.threat, label: t.label, count: t.count, status: t.status, confidence: t.confidence,
         confirmed: t.confirmed, last_report: new Date(t.last_seen * 1000).toISOString(), place: t.place,
-        destination: t.dest?.name || null, sources: t.sources.map(s => s.channel) };
-      feats.push({ type: 'Feature', properties: { ...props, kind: 'path' },
-        geometry: { type: 'LineString', coordinates: t.points.map(q => [q.lon, q.lat]) } });
+        destination: t.dest?.name || null, heading: p.brg ?? t.heading, sources: t.sources.map(s => s.channel) };
       feats.push({ type: 'Feature', properties: { ...props, kind: p.est ? 'estimated position' : 'last reported position' },
         geometry: { type: 'Point', coordinates: [p.lon, p.lat] } });
     }
