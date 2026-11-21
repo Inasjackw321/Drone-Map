@@ -112,7 +112,10 @@ class Engine:
     def rebuild(self, now: float | None = None) -> dict:
         t0 = time.perf_counter()
         now = now or time.time()
-        msgs = self.store.since(now - self.cfg.window_hours * 3600)
+        window = self.cfg.window_hours * 3600
+        long_window = max(window, 12 * 3600)              # alert state needs the whole alert history
+        msgs = [m for m in self.store.since(now - long_window)
+                if m.ts >= now - window or self.by_handle.get(m.channel, {}).get("alerts")]
         items = []
         live_keys = set()
         for m in msgs:

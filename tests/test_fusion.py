@@ -225,3 +225,27 @@ def test_groups_flying_opposite_ways_stay_apart():
     snap = fuse([(0, "PoltavaRadar", "Шахед над Хоролом, курс на Лубни"),
                  (1, "PoltavaRadar", "Шахед над Семенівкою, курс на Кременчук")], 2)
     assert len(snap["tracks"]) == 2
+
+
+def test_only_the_alert_feed_sets_alert_colours():
+    chans = {**CH, "UkraineAlarmSignal": {"tier": "official", "regions": [], "alerts": True},
+             "vin_info_ppo": {"tier": "regional", "regions": ["vinnytsia"]}}
+    msgs = [(0, "vin_info_ppo", "Повітряна тривога!"),
+            (1, "UkraineAlarmSignal", "🟡 Жовтий рівень тривоги\n• Вінницький район (Вінницька обл.)"),
+            (2, "UkraineAlarmSignal", "🔴 Червоний рівень тривоги\n• Харків (Харківська обл.)")]
+    items = []
+    for i, (t, ch, text) in enumerate(msgs):
+        meta = chans[ch]
+        items.append((MsgRef(ch, i + 1, T0 + t * 60, meta["tier"], text), parse_message(text, meta["regions"], meta["tier"])))
+    snap = run_fusion(items, chans, None, T0 + 5 * 60)
+    zones = {(a["id"], a["kind"], a["level"]) for a in snap["alerts"]}
+    assert zones == {("UA0502", "raion", "yellow"), ("c:kharkiv", "city", "red")}   # no whole-oblast spill-over
+
+
+def test_threat_all_clear_removes_its_notice():
+    CH["monitor1654"] = {"tier": "regional", "regions": ["kharkiv"]}
+    snap = fuse([(0, "kpszsu", "Загроза застосування балістичного озброєння з півдня!")], 1)
+    assert snap["banners"]
+    snap = fuse([(0, "kpszsu", "Загроза застосування балістичного озброєння з півдня!"),
+                 (3, "monitor1654", "Відбій загрози балістики✔️")], 4)
+    assert snap["banners"] == []

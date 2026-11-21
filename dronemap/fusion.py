@@ -25,7 +25,7 @@ ENDED_VISIBLE_MIN = 10
 EVENT_TTL_MIN = {"explosion": 45, "kill": 30, "threat": 20}
 RU_ZONE_TTL_MIN = 90
 BANNER_TTL_MIN = 40
-ALERT_TTL_MIN = 6 * 60
+ALERT_TTL_MIN = 24 * 60
 
 DEFAULT_WEIGHTS = {"official": 0.9, "recon": 0.7, "regional": 0.55, "aggregator": 0.15}
 
@@ -154,8 +154,18 @@ class Fusion:
         self.feed: list[dict] = []
         self._last_threat: dict[str, tuple[str, float]] = {}
         self.ru_zones: dict[str, dict] = {}
+        self._alert_channels: set[str] | None = None
 
     # ------------------------------------------------------------------ helpers
+    def _sets_alerts(self, channel: str) -> bool:
+        """Air-raid alert state comes from the official alert feed (channels marked "alerts").
+        Other channels' "тривога" posts lag and rarely say when it ends."""
+        if self._alert_channels is None:
+            self._alert_channels = {h for h, c in self.channels.items() if c.get("alerts")}
+        if self._alert_channels:
+            return channel in self._alert_channels
+        return self._tier(channel) in ("official", "regional")
+
     def _tier(self, channel: str) -> str:
         return self.channels.get(channel, {}).get("tier", "aggregator")
 
@@ -403,21 +413,30 @@ class Fusion:
             self._last_threat[ref.channel] = (parsed.sightings[-1].threat, ref.ts)
         if (parsed.clear_places or parsed.clear_oblasts) and ref.tier != "aggregator":
             self.on_clear(parsed, ref)
+        if parsed.threats_cleared and ref.tier != "aggregator":
+            # "відбій загрози балістики": drop that threat's notices and threat areas
+            gone = {"threat:" + t for t in parsed.threats_cleared}
+            self.banners = [b for b in self.banners if b["kind"] not in gone or b["ts"] > ref.ts]
+            self.events = [e for e in self.events if not (e["kind"] == "threat" and e.get("threat") in parsed.threats_cleared)]
         for ev in parsed.events:
             if ev.kind == "kill":
                 self.on_kill(ev, ref)
             elif ev.place is not None:
                 self._add_event(ev.kind, ev, ref)
-        if ref.tier != "aggregator":
+        if ref.tier != "aggregator" and self._sets_alerts(ref.channel):
             for unit in parsed.alerts_on:
                 raion = GAZETTEER.raions.get(unit)
+                city = GAZETTEER.places.get(unit[2:]) if unit.startswith("c:") else None
                 if raion is not None:
                     kind, oblast, name, center = "raion", raion.oblast, raion.name, raion
+                elif city is not None:
+                    kind, oblast, name, center = "city", city.oblast, city.name, city
                 else:
                     kind, oblast, name = "oblast", unit, OBLAST_NAMES.get(unit, unit)
                     center = GAZETTEER.oblast_center.get(unit) or (GAZETTEER.places.get("kyiv") if unit == "kyiv_city" else None)
                 prev = self.alerts.get(unit)
-                self.alerts[unit] = {"id": unit, "kind": kind, "oblast": oblast, "name": name, "level": parsed.alert_level,
+                self.alerts[unit] = {"id": unit, "kind": kind, "oblast": oblast, "name": name,
+                                     "level": parsed.alert_levels.get(unit, parsed.alert_level),
                                      "since": prev["since"] if prev else ref.ts, "last_ts": ref.ts, "channel": ref.channel,
                                      "lat": center.lat if center else None, "lon": center.lon if center else None}
             for unit in parsed.alerts_off:
@@ -428,6 +447,7 @@ class Fusion:
             cleared_oblasts = {u for u in parsed.alerts_off if u in OBLAST_NAMES}
             if cleared_oblasts:
                 self.on_all_clear(cleared_oblasts, ref)
+        if ref.tier != "aggregator":
             # nationwide banners: official / reconnaissance channels, or a regional
             # channel warning about ballistic or Kinzhal launches
             banners = [b for b in parsed.banners if (ref.tier in ("official", "recon")
@@ -448,7 +468,7 @@ class Fusion:
             kinds += sorted({e.kind for e in parsed.events})
             if parsed.alerts_on:
                 kinds.append("alert")
-            if parsed.alerts_off or parsed.clear_places or parsed.clear_oblasts:
+            if parsed.alerts_off or parsed.clear_places or parsed.clear_oblasts or parsed.threats_cleared:
                 kinds.append("all clear")
             if parsed.banners:
                 kinds.append("notice")

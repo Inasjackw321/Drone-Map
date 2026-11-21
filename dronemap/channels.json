@@ -43,7 +43,9 @@
       "handle": "UkraineAlarmSignal",
       "tier": "official",
       "area": "All of Ukraine",
-      "regions": []
+      "regions": [],
+      "alerts": true,
+      "backfill_hours": 12
     },
     {
       "handle": "rozvidkaneba",

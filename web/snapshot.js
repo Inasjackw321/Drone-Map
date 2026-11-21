@@ -98,6 +98,15 @@ window.DMSnapshot = (() => {
       if (a) levels.add(a.level);
       return a ? (a.level === 'red' ? PAL.red : PAL.yellow) : PAL.land;
     });
+    if (show.alerts) {
+      for (const a of state.alerts || []) {
+        if (a.kind !== 'city' || a.lat == null || !inView(a.lat, a.lon, 0.3)) continue;
+        levels.add(a.level);
+        ctx.beginPath(); ctx.arc(X(a.lon), Y(a.lat), kmPx(a.lat, 11), 0, Math.PI * 2);
+        ctx.fillStyle = a.level === 'red' ? PAL.red : PAL.yellow; ctx.fill();
+        ctx.strokeStyle = '#0e1217'; ctx.lineWidth = 1.5; ctx.stroke();
+      }
+    }
     const occ = base.state.occupied;
     if (show.occupied && occ?.features?.length) {
       ctx.globalAlpha = 0.92; fillGeo(occ, () => PAL.occupied, PAL.occupiedLine, 1); ctx.globalAlpha = 1;

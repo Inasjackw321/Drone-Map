@@ -337,3 +337,33 @@ def test_russia_missile_danger_and_propaganda():
     assert parse_message("Ракетная опасность. Белгород", RU, "russia").ru_zones[0][1] == "missile"
     long_post = "Укровские кастрюли так радовались " * 12
     assert not parse_message(long_post, RU, "russia").relevant
+
+
+# ------------------------------------------------------------------ official alert feed formats
+
+def test_city_in_alert_list_is_its_own_zone_not_the_whole_oblast():
+    r = parse_message("🟢 Відбій тривоги\n• Марганець (Дніпропетровська обл.)\n• Нікополь (Дніпропетровська обл.)", (), "official")
+    assert r.alerts_off == {"c:marhanets", "c:nikopol"}
+    r = parse_message("🔴 Червоний рівень тривоги\n• Харків (Харківська обл.)\n• Ізюмський район (Харківська обл.)", (), "official")
+    assert r.alerts_on == {"c:kharkiv", "UA6304"} and "kharkiv" not in r.alerts_on
+
+
+def test_single_zone_alert_posts():
+    r = parse_message("🔴 Ізюмський район (Харківська обл.)\nЧервоний рівень тривоги. Прямуйте в укриття!", (), "official")
+    assert r.alerts_on == {"UA6304"} and r.alert_level == "red"
+    r = parse_message("🟡 Київ\nЖовтий рівень тривоги. Прямуйте в укриття!", (), "official")
+    assert r.alerts_on == {"kyiv_city"} and r.alert_level == "yellow"
+    r = parse_message("🟢 Баштанський район (Миколаївська обл.)\nВідбій тривоги. Будьте обережні!", (), "official")
+    assert r.alerts_off == {"UA4802"}
+
+
+def test_districts_renamed_in_2024():
+    assert parse_message("🔴 Берестинський район (Харківська обл.)\nЧервоний рівень тривоги.", (), "official").alerts_on == {"UA6306"}
+    assert parse_message("🟢 Відбій тривоги\n• Самарівський район (Дніпропетровська обл.)", (), "official").alerts_off == {"UA1210"}
+
+
+def test_alert_post_with_two_sections():
+    r = parse_message("🟡 Відбій червоної тривоги\n• Полтавський район (Полтавська обл.)\n\n🟢 Відбій тривоги\n"
+                      "• Гайсинський район (Вінницька обл.)\n• Жмеринський район (Вінницька обл.)", (), "official")
+    assert r.alerts_on == {"UA5308"} and r.alert_levels == {"UA5308": "yellow"}
+    assert r.alerts_off == {'UA0506', 'UA0504'}

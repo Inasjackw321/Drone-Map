@@ -765,6 +765,8 @@ def _token_prefixes(tok: str) -> set[str]:
 
 
 REGIONS_FILE = Path(__file__).parent / "data" / "regions.json"
+# districts renamed in 2024 (the boundary data uses the 2023 names)
+RAION_ALIASES = {"Красноградський": ["Берестинський"], "Новомосковський": ["Самарівський"], "Червоноградський": ["Шептицький"]}
 
 
 def _raion_tokens(name: str) -> list[str]:
@@ -836,6 +838,8 @@ class Gazetteer:
             idx = json.loads(REGIONS_FILE.read_text(encoding="utf-8"))
             for r in idx["raions"]:
                 toks = _raion_tokens(r["name"])
+                for alias in RAION_ALIASES.get(r["name"], ()):
+                    toks += _raion_tokens(alias)
                 if not toks or r["oblast"] in ("kyiv_city", "sevastopol"):
                     continue
                 place = Place("r" + r["id"], f'{r["name_en"]} raion', r["label"][1], r["label"][0], r["oblast"], "A")

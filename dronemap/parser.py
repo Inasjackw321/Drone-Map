@@ -206,6 +206,7 @@ class ParsedMessage:
     alerts_on: set[str] = field(default_factory=set)      # raion ids ("UA5902") or oblast keys ("sumy")
     alerts_off: set[str] = field(default_factory=set)
     alert_level: str = "red"                                # red | yellow
+    alert_levels: dict[str, str] = field(default_factory=dict)   # per unit, when a post mixes levels
     banners: list[tuple[str, str]] = field(default_factory=list)   # (kind, text)
     threats: list[str] = field(default_factory=list)
     places: list[str] = field(default_factory=list)
@@ -215,11 +216,12 @@ class ParsedMessage:
     bare_places: list[PlaceRef] = field(default_factory=list)
     ru_zones: list[tuple[PlaceRef, str]] = field(default_factory=list)   # (place, drone|missile) from Russian sources
     ru_clear: list[PlaceRef] = field(default_factory=list)
+    threats_cleared: list[str] = field(default_factory=list)         # "відбій загрози балістики"
 
     @property
     def relevant(self) -> bool:
         return bool(self.sightings or self.events or self.alerts_on or self.alerts_off or self.banners
-                    or self.clear_places or self.clear_oblasts or self.ru_zones or self.ru_clear)
+                    or self.clear_places or self.clear_oblasts or self.ru_zones or self.ru_clear or self.threats_cleared)
 
 
 # --------------------------------------------------------------------------- helpers
@@ -419,14 +421,57 @@ def _after_threat_word(prefix: str) -> bool:
 
 
 def alert_units(refs: list[PlaceRef], fallback) -> set[str]:
-    """Where an alert applies: districts when named ("Конотопський район"), otherwise whole oblasts."""
+    """Where an alert applies: a district ("Конотопський район"), a city ("Харків"), or a whole oblast."""
     units = set()
     for r in refs:
         if r.place.kind == "A":
-            units.add(r.place.key[1:])
+            units.add(r.place.key[1:])                     # district
+        elif r.place.oblast in ("kyiv_city", "sevastopol"):
+            units.add(r.place.oblast)                      # Kyiv / Sevastopol have their own polygon
+        elif r.place.kind == "R" and _ukr(r.place.oblast):
+            units.add(r.place.oblast)                      # whole oblast
         elif _ukr(r.place.oblast):
-            units.add(r.place.oblast)
+            units.add("c:" + r.place.key)                  # a city or community: just that place
     return units or set(fallback)
+
+
+ALERT_HEAD = re.compile(r"^(?:🔴|🟡|🟢|відбій|червоний рівень|жовтий рівень|повітряна тривога)")
+
+
+def alert_sections(norm: str) -> list[tuple[str, str]]:
+    """Split an alert-feed post into (action, text) sections; action is red / yellow / off / none."""
+    sections: list[list[str]] = []
+    for line in norm.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        if ALERT_HEAD.match(line) or not sections:
+            sections.append([line])
+        else:
+            sections[-1].append(line)
+    out = []
+    for lines in sections:
+        text = "\n".join(lines)
+        head = lines[0]
+        if "відбій червон" in head:
+            action = "yellow"                     # red lifted, yellow level remains
+        elif head.startswith("🟢") or "відбій" in head:
+            action = "off"
+        elif head.startswith("🟡") or "жовт" in head:
+            action = "yellow"
+        elif head.startswith("🔴") or ALERT_RE.search(head) or "червон" in head:
+            action = "red"
+        else:
+            action = "none"
+        out.append((action, text))
+    # a single-zone post puts the place in the header and the level on the next line:
+    # "🔴 Ізюмський район (Харківська обл.) / Червоний рівень тривоги. Прямуйте в укриття!"
+    merged: list[tuple[str, str]] = []
+    for action, text in out:
+        if merged and action == merged[-1][0] and not GAZETTEER.find(text):
+            continue                              # the level line repeats the header's action
+        merged.append((action, text))
+    return merged
 
 
 def alert_level(text: str) -> str:
@@ -513,19 +558,23 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
     res.places = list(dict.fromkeys(r.label for r in all_refs))
     single_region = prefer_oblasts if tier == "regional" and len(prefer_oblasts) <= 2 else []
 
-    # ---- alert-system style posts: a header line and a list of districts
+    # ---- alert-system style posts: one or more sections, each a header and a list of districts
+    #      ("🟡 Відбій червоної тривоги / • A / 🟢 Відбій тривоги / • B / • C" = A stays yellow, B and C clear)
     if not msg_threats or (ALERT_RE.search(norm) and not MOVE_CUE_RE.search(norm)):
-        ukr_refs = [r for r in all_refs if _ukr(r.place.oblast)]
-        if ALLCLEAR_RE.search(norm) or "відбій" in norm:
-            if "червон" in norm:                           # "відбій червоної тривоги": yellow level remains
-                res.alerts_on.update(alert_units(ukr_refs, single_region))
-                res.alert_level = "yellow"
-            else:
-                res.alerts_off.update(alert_units(ukr_refs, single_region))
-            return res
-        if ALERT_RE.search(norm):
-            res.alerts_on.update(alert_units(ukr_refs, single_region))
-            res.alert_level = alert_level(norm)
+        if ALLCLEAR_RE.search(norm) or "відбій" in norm or ALERT_RE.search(norm):
+            sections = alert_sections(norm)
+            for i, (action, sec_text) in enumerate(sections):
+                refs_here = [r for seg in split_segments(sec_text) for r in locate(seg, prefer_oblasts, village_prefer, caps)
+                             if _ukr(r.place.oblast)]
+                fallback = single_region if len(sections) == 1 else []
+                units = alert_units(refs_here, fallback)
+                if action == "off":
+                    res.alerts_off.update(units)
+                elif action in ("red", "yellow"):
+                    res.alerts_on.update(units)
+                    for u in units:
+                        res.alert_levels[u] = action
+                    res.alert_level = action
             return res
 
     # ---- "в області чисто", "Кременчук поки чисто"
@@ -533,6 +582,11 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
         res.clear_places = [r for r in all_refs if _ukr(r.place.oblast)]
         if not res.clear_places:
             res.clear_oblasts = set(single_region)
+        return res
+
+    # ---- "Відбій загрози балістики": the threat is over, clear its warnings
+    if msg_threats and THREAT_AREA_RE.search(norm) and (ALLCLEAR_RE.search(norm) or "відбій" in norm or "знято" in norm):
+        res.threats_cleared = msg_threats
         return res
 
     # ---- threat notices without any movement ("Загроза застосування БПЛА. Перейдіть в укриття!")

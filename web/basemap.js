@@ -48,6 +48,7 @@ window.DMBase = (() => {
     map = m;
     pane('dm-base', 210);
     pane('dm-occ', 250, true);
+    pane('dm-alert', 255, true);
     pane('dm-ru', 260);
     pane('dm-lines', 300, true);
     pane('dm-labels', 350, true);
@@ -72,6 +73,7 @@ window.DMBase = (() => {
     layers.occupied = L.geoJSON(null, { pane: 'dm-occ', interactive: false,
       style: { fillColor: PAL.occupied, fillOpacity: 0.92, color: PAL.occupiedLine, weight: 0.8 } }).addTo(map);
     layers.ruZones = L.layerGroup().addTo(map);
+    layers.cityAlerts = L.layerGroup().addTo(map);
     layers.raionLines = L.geoJSON(data.raions, { pane: 'dm-lines', interactive: false,
       style: { fill: false, color: PAL.raionLine, weight: 0.7, opacity: 0.9 } }).addTo(map);
     layers.oblastLines = L.geoJSON(data.oblasts, { pane: 'dm-lines', interactive: false,
@@ -127,6 +129,16 @@ window.DMBase = (() => {
         fillColor: a ? (a.level === 'red' ? PAL.red : PAL.yellow) : PAL.land,
         fillOpacity: a ? (state.detail ? 0.5 : 1) : landOpacity,
       });
+    }
+    // a city or community under alert (e.g. "Харків" in the alert feed): just that place
+    layers.cityAlerts.clearLayers();
+    if (state.showAlerts) {
+      for (const a of state.alerts) {
+        if (a.kind !== 'city' || a.lat == null) continue;
+        const c = a.level === 'red' ? PAL.red : PAL.yellow;
+        L.circle([a.lat, a.lon], { pane: 'dm-alert', radius: 11000, color: '#0e1217', weight: 1.2, fillColor: c, fillOpacity: state.detail ? 0.55 : 0.95, interactive: false })
+          .addTo(layers.cityAlerts);
+      }
     }
     for (const l of Object.values(ruIndex)) l.setStyle({ fillColor: PAL.russia, fillOpacity: state.detail ? 0.3 : 1 });
     layers.neighbors.setStyle({ fillOpacity: state.detail ? 0.3 : 1 });
