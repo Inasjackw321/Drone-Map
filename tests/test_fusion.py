@@ -182,3 +182,46 @@ def test_russia_zones_layer_is_separate_and_expires():
     snap = fuse(msgs + [(4, "lpr1_treugolnik", "Брянская область \nОтбой опасности по БПЛА")], 5)
     assert [z["name"] for z in snap["ru_zones"]] == ["Воронежская обл."]     # town inside Bryansk cleared too
     assert fuse(msgs, 200)["ru_zones"] == []
+
+
+# ------------------------------------------------------------------ duplicates (several channels, one group)
+
+def test_lagging_reports_of_one_group_stay_one_target():
+    CH["raketa_trevoga"] = {"tier": "aggregator", "regions": []}
+    CH["inforomen"] = {"tier": "regional", "regions": ["sumy"]}
+    snap = fuse([
+        (0, "PoltavaRadar", "7 шахедів над Хоролом, курс на Лубни"),
+        (3, "raketa_trevoga", "Полтавщина: 7 БпЛА на Лубни/Пирятин"),
+        (6, "inforomen", "Полтавщина: бензинові повз Пирятин на Яготин (8 шт)"),
+    ], 7)
+    live = [t for t in snap["tracks"] if t["status"] == "active"]
+    assert len(live) == 1
+    assert live[0]["count"] == 8                      # largest estimate, never the sum
+
+
+def test_destination_only_drone_reports_do_not_add_icons():
+    CH["raketa_trevoga"] = {"tier": "aggregator", "regions": []}
+    snap = fuse([(0, "raketa_trevoga", "Полтавщина: 5 БПЛА на Рокиту, 2 на Лубни"),
+                 (1, "PoltavaRadar", "Шахед на Полтаву")], 2)
+    assert snap["tracks"] == []
+    # a missile heading somewhere is still worth an early warning
+    snap = fuse([(0, "kpszsu", "Балістика на Полтаву")], 1)
+    assert len(snap["tracks"]) == 1
+
+
+def test_ordinary_and_jet_shaheds_are_different_targets():
+    snap = fuse([(0, "PoltavaRadar", "2 звичайних БпЛА над Полтавою"),
+                 (1, "PoltavaRadar", "Реактивний над Полтавою")], 2)
+    assert sorted(t["threat"] for t in snap["tracks"]) == ["jet_shahed", "shahed"]
+
+
+def test_generic_report_folds_into_nearby_specific_target():
+    snap = fuse([(0, "PoltavaRadar", "3 шахеди над Решетилівкою, курс на Миргород"),
+                 (2, "kpszsu", "БпЛА на Полтавщині курсом на Миргород")], 3)
+    assert len(snap["tracks"]) == 1 and snap["tracks"][0]["threat"] == "shahed"
+
+
+def test_groups_flying_opposite_ways_stay_apart():
+    snap = fuse([(0, "PoltavaRadar", "Шахед над Хоролом, курс на Лубни"),
+                 (1, "PoltavaRadar", "Шахед над Семенівкою, курс на Кременчук")], 2)
+    assert len(snap["tracks"]) == 2

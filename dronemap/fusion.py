@@ -46,8 +46,6 @@ def compatibility(a: str, b: str) -> float | None:
         return 0.15
     if pair <= {"shahed", "gerbera"}:
         return 0.3
-    if pair <= {"shahed", "jet_shahed"}:
-        return 0.4
     if pair <= {"ballistic", "kinzhal"}:
         return 0.3
     return None
@@ -208,9 +206,9 @@ class Fusion:
             if ang > (95 if missile else 120):
                 return None
             cost += ang / 240
-        if s.dest is not None and hdg is not None and missile and not coarse:
-            # a missile group reported heading somewhere else is a different group
-            if angle_diff(hdg, bearing(pos.lat, pos.lon, s.dest.lat, s.dest.lon)) > 100:
+        if s.dest is not None and hdg is not None and not coarse:
+            # a group reported heading somewhere else entirely is a different group
+            if angle_diff(hdg, bearing(pos.lat, pos.lon, s.dest.lat, s.dest.lon)) > (100 if missile else 110):
                 return None
         if t.dest is not None and haversine(pos.lat, pos.lon, t.dest.lat, t.dest.lon) < 30:
             cost -= 0.3
@@ -283,9 +281,13 @@ class Fusion:
 
         if best is None:
             if pos is None:
-                if s.dest is None:
+                # "heading to X" without a position: a useful early warning for missiles, bombs and
+                # ballistic threats, but for drones it would only add a placeholder next to the real one
+                if s.dest is None or THREATS[s.threat]["family"] == "drone" or ref.tier == "aggregator":
                     return
                 pos = self._point(s.dest, ts, ref.channel, "inbound")
+            elif ref.tier == "aggregator" and pos.precision != "point":
+                return                     # an aggregator's "somewhere in the region" only confirms targets
             t = Track(self._tid(ref.channel, ref.msg_id, idx, s.threat), s.threat, ts, ts)
             self.tracks.append(t)
             best = t
@@ -469,6 +471,79 @@ class Fusion:
             miss *= 1 - self.weights.get("aggregator", 0.15)
         return min(0.99, 1 - miss), True
 
+    # ------------------------------------------------------------------ duplicates
+    def _same_object(self, a: Track, b: Track) -> bool:
+        """Two live tracks that are most likely one group reported by different channels."""
+        comp = compatibility(a.threat, b.threat)
+        # two different specific types (Shahed / Gerbera) reported separately are different objects;
+        # only a generic "БпЛА" / "ракета" report folds into a specific one
+        if comp is None or comp > 0.15 or abs(a.last_ts - b.last_ts) > 25 * 60:
+            return False
+        pa, pb = a.last, b.last
+        d = haversine(pa.lat, pa.lon, pb.lat, pb.lon)
+        coarse = {pa.precision, pb.precision} & {"region", "origin"}
+        if {pa.precision, pb.precision} & {"inbound"}:
+            inb, other = (a, b) if pa.precision == "inbound" else (b, a)
+            near_dest = other.dest is not None and haversine(other.dest.lat, other.dest.lon, inb.last.lat, inb.last.lon) < 35
+            return near_dest or haversine(other.last.lat, other.last.lon, inb.last.lat, inb.last.lon) < 25
+        ha, hb = a.heading_estimate(), b.heading_estimate()
+        # continuation: one was heading to a place and the other has since been reported near it
+        older, newer = (a, b) if a.last_ts <= b.last_ts else (b, a)
+        if (older.dest is not None and newer.last.precision == "point" and newer.last_ts - older.last_ts <= 20 * 60
+                and newer.first_ts >= older.last_ts - 5 * 60       # it appeared as the other went quiet
+                and (ha is None or hb is None or angle_diff(ha, hb) < 90)   # and flies on the same way
+                and haversine(older.dest.lat, older.dest.lon, newer.last.lat, newer.last.lon) < (50 if a.family == "drone" else 40)):
+            return True
+        # same corridor: same region, same direction, reported close in time; only a weakly
+        # supported duplicate is folded in, two well-established groups stay apart
+        if (a.family == "drone" and not coarse and ha is not None and hb is not None and angle_diff(ha, hb) < 45
+                and d < 80 and pa.oblast == pb.oblast and abs(a.last_ts - b.last_ts) <= 15 * 60
+                and min(len(a.sources), len(b.sources)) <= 3):
+            return True
+        limit = (110 if coarse else 30) if a.family == "drone" else (150 if coarse else 60)
+        if d > limit:
+            return False
+        if coarse:
+            return pa.oblast == pb.oblast or d < 60
+        if ha is not None and hb is not None and angle_diff(ha, hb) > 75 and d > 8:
+            return False                        # close but flying different ways: two groups
+        return True
+
+    def _absorb(self, keep: Track, other: Track) -> None:
+        keep.sources = {**other.sources, **keep.sources}
+        keep.refs = sorted(keep.refs + other.refs, key=lambda r: r.ts)
+        if other.last_ts > keep.last_ts and (other.last.precision == "point" or keep.last.precision != "point"):
+            keep.add_point(other.last)
+            if other.dest is not None:
+                keep.dest = other.dest
+            if other.heading is not None:
+                keep.heading, keep.heading_ts = other.heading, other.heading_ts
+        keep.last_ts = max(keep.last_ts, other.last_ts)
+        keep.first_ts = min(keep.first_ts, other.first_ts)
+        if keep.dest is None:
+            keep.dest = other.dest
+        if other.count and (not keep.count or other.count > keep.count):
+            keep.count = other.count                # the same group: take the larger estimate, never the sum
+        keep.group = keep.group or other.group
+        if THREATS[other.threat]["spec"] > THREATS[keep.threat]["spec"] and compatibility(keep.threat, other.threat) is not None:
+            keep.threat = other.threat
+        keep.destroyed = max(keep.destroyed, other.destroyed)
+
+    def merge_duplicates(self, now: float) -> None:
+        live = [t for t in self.tracks if t.ended is None and now - t.last_ts <= _lookup(STALE_AFTER, t.threat) * 60]
+        # the best-supported, most precise track absorbs the others
+        live.sort(key=lambda t: (t.last.precision != "point", -len(t.sources), -t.last_ts))
+        gone: set[str] = set()
+        for i, a in enumerate(live):
+            if a.id in gone:
+                continue
+            for b in live[i + 1:]:
+                if b.id not in gone and self._same_object(a, b):
+                    self._absorb(a, b)
+                    gone.add(b.id)
+        if gone:
+            self.tracks = [t for t in self.tracks if t.id not in gone]
+
     def snapshot(self, now: float) -> dict:
         tracks_out = []
         for t in self.tracks:
@@ -537,6 +612,13 @@ class Fusion:
 
 def run_fusion(items: list[tuple[MsgRef, ParsedMessage]], channels: dict, weights: dict | None, now: float) -> dict:
     fusion = Fusion(channels, weights)
+    next_merge = None
     for ref, parsed in sorted(items, key=lambda it: (it[0].ts, it[0].channel, it[0].msg_id)):
+        if next_merge is None:
+            next_merge = ref.ts + 300
+        elif ref.ts >= next_merge:               # every 5 minutes of reports, fold duplicates together
+            fusion.merge_duplicates(ref.ts)
+            next_merge = ref.ts + 300
         fusion.process(ref, parsed)
+    fusion.merge_duplicates(now)
     return fusion.snapshot(now)

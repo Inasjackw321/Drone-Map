@@ -51,7 +51,8 @@ THREAT_PATTERNS: list[tuple[str, re.Pattern]] = [(k, re.compile(p)) for k, p in 
     ("recon", _W + r"(?:орлан\w*|zala(?![a-z])|зала(?![\w])|суперкам\w*|supercam|"
               r"розвідувальн\w*\s+(?:бпла|дрон\w*|безпілот\w*)|разведывательн\w*\s+(?:бпла|дрон\w*|беспилот\w*)|"
               r"розвідник\w*|мохаджер\w*|mohajer|форпост\w*)"),
-    ("shahed", _W + r"(?:шахед\w*|шахід\w*|шаhед\w*|герань\w*|герані\w*|мопед\w*|shahed\w*|geran\w*|"
+    ("shahed", _W + r"(?:шахед\w*|шахід\w*|шаhед\w*|герань\w*|герані\w*|мопед\w*|shahed\w*|geran\w*|бензинов\w*|поршнев\w*|"
+               r"звичайн\w*\s+(?:бпла|дрон\w*|безпілот\w*|шахед\w*)|обычн\w*\s+(?:бпла|дрон\w*|беспилот\w*|шахед\w*)|"
                r"ударн\w*\s+(?:бпла|дрон\w*|безпілот\w*|беспилот\w*))|🛵"),
     ("uav", _W + r"(?:бпла|безпілот\w*|беспилот\w*|дрон\w*|uav|бла(?![\w])|італмас\w*|италмас\w*)|🛸"),
 ]]
@@ -293,6 +294,10 @@ def extract_count(seg: str, threat_spans: list[tuple[str, int, int]]) -> tuple[i
                 count = int(ma.group("a") or ma.group("b") or ma.group("c"))
         if count:
             break
+    if count is None:
+        m = re.search(r"(?<!\d)(\d{1,2})(?:\s*[-–]\s*\d{1,2})?\s*шт", seg)     # "(8 шт)", "8-10шт"
+        if m:
+            count = int(m.group(1))
     if count is not None and not (1 <= count <= 30):
         count = None                                  # larger numbers are nightly totals, not one group
     group = bool(GROUP_RE.search(seg))
@@ -542,7 +547,8 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
             res.banners.append(("threat:" + msg_threats[0], norm))
         return res
 
-    inherited: list[str] = msg_threats[:1] if len(msg_threats) == 1 else []
+    distinct = {t for t in msg_threat_list}
+    inherited: list[str] = msg_threats[:1] if len(distinct) == 1 else []
     pending_banners: list[tuple[str, str]] = []
     is_news = bool(NEWS_RE.search(norm))            # aftermath / news report: feed only, nothing live to plot
 
