@@ -123,8 +123,8 @@
 
   function tipHtml(t) {
     const p = predicted(t);
-    const where = t.precision === 'inbound' ? `heading to ${esc(t.place)}` : esc(t.place);
-    const dest = t.dest && t.precision !== 'inbound' ? ` → ${esc(t.dest.name)}` : '';
+    const where = t.precision === 'inbound' ? `heading to ${esc(t.place)}` : esc(t.place) + (t.precision === 'approx' ? ' <span style="color:var(--muted)">(est.)</span>' : '');
+    const dest = t.dest && t.precision !== 'inbound' && t.precision !== 'approx' ? ` → ${esc(t.dest.name)}` : '';
     const unc = t.confirmed ? '' : ' · <b style="color:var(--warn)">unconfirmed</b>';
     const est = p.est ? `<br><span style="color:var(--muted)">estimated ~${Math.round(p.km)} km further since the last report</span>` : '';
     return `<b>${esc(tLabel(t))}</b> · ${where}${dest}${est}<br><span style="color:var(--muted)">last report ${ago(t.last_seen)} · ${Math.round(t.confidence * 100)}% confidence${unc}</span>`;
@@ -140,7 +140,7 @@
     const sel = S.selected === t.id;
     const hot = ['ballistic', 'kinzhal'].includes(t.threat) && t.status === 'active';
     const cls = ['mk', t.status, t.confirmed ? '' : 'unconf', sel ? 'sel' : '', t.precision === 'inbound' ? 'inbound' : '',
-      t.precision === 'region' ? 'approx' : '', hot ? 'hot' : ''].join(' ');
+      ['region', 'approx'].includes(t.precision) ? 'approx' : '', hot ? 'hot' : ''].join(' ');
     const badge = t.count > 1 ? `<span class="mk-n">${t.count}</span>` : '';
     const size = info(t.threat).family === 'drone' ? 30 : 32;          // drones a touch smaller: "mini drones"
     return { key: [cls, t.threat, t.count].join('|'), icon: L.divIcon({
@@ -429,7 +429,7 @@
     const confNote = t.confirmed
       ? (t.sources.length > 1 ? `${t.sources.length} independent channels` : 'single source')
       : 'only aggregator channels so far, waiting for an official or regional source';
-    const path = t.points.filter(p => p.precision !== 'inbound').map(p => `<li style="--c:${c}">${esc(p.place)}${p.precision === 'region' ? ' <span class="tag">region</span>' : p.precision === 'origin' ? ' <span class="tag">launch area</span>' : ''}<span class="tm">${clock(p.ts)}</span></li>`).join('');
+    const path = t.points.filter(p => p.precision !== 'inbound').map(p => `<li style="--c:${c}">${esc(p.place)}${p.precision === 'region' ? ' <span class="tag">region</span>' : p.precision === 'origin' ? ' <span class="tag">launch area</span>' : p.precision === 'approx' ? ' <span class="tag">estimated</span>' : ''}<span class="tm">${clock(p.ts)}</span></li>`).join('');
     const destLi = t.dest ? `<li class="dest" style="--c:${c}">→ ${esc(t.dest.name)} <span class="tm">reported destination</span></li>` : '';
     const msgs = t.messages.map(m => {
       const link = S.state.mode === 'demo' ? `@${esc(m.channel)}` : `<a href="https://t.me/${encodeURIComponent(m.channel)}/${m.id}" target="_blank" rel="noopener">@${esc(m.channel)}</a>`;
@@ -441,7 +441,7 @@
         <div><h2>${esc(info(t.threat).label)}${t.count > 1 ? ` ×${t.count}` : ''}</h2>
         <div class="sub">${esc(statusTxt)} · last report ${ago(t.last_seen)}</div></div></div>
       <dl class="kv">
-        <dt>Position</dt><dd>${esc(t.precision === 'inbound' ? 'not yet seen, reported heading to ' + t.place : t.place)}</dd>
+        <dt>Position</dt><dd>${esc(t.precision === 'inbound' ? 'not yet seen, reported heading to ' + t.place : t.place)}${t.precision === 'approx' ? '<br><span style="color:var(--muted);font-size:12px">estimated: the report gave where it is heading, not where it is</span>' : ''}</dd>
         <dt>Heading</dt><dd>${t.dest ? '→ ' + esc(t.dest.name) : ''}${t.heading != null ? ` (${compass(t.heading)}, ${Math.round(t.heading)}°)` : (t.dest ? '' : 'unknown')}</dd>
         <dt>Speed</dt><dd>${t.speed_kmh ? `~${t.speed_kmh} km/h observed` : `typical ${t.nominal_speed_kmh} km/h`}</dd>
         <dt>Confidence</dt><dd>${conf}% ${confBar(t.confidence)}<br><span style="color:var(--muted);font-size:12px">${esc(confNote)}</span></dd>

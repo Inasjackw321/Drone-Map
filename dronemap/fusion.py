@@ -7,10 +7,11 @@ That makes the result deterministic, robust to channels being polled at differen
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass, field
 
-from .gazetteer import GAZETTEER, OBLAST_NAMES, angle_diff, bearing, haversine
-from .parser import THREATS, AreaEvent, ParsedMessage, PlaceRef, Sighting  # noqa: F401
+from .gazetteer import GAZETTEER, OBLAST_NAMES, angle_diff, bearing, destination, haversine
+from .parser import THREATS, AreaEvent, ParsedMessage, PlaceRef, Sighting, _ukr  # noqa: F401
 
 # How long after the last report a new report can still continue the same track (minutes)
 ASSOC_WINDOW = {"drone": 50, "missile": 15, "kab": 10, "ballistic": 6, "kinzhal": 6, "jet_shahed": 30}
@@ -28,6 +29,30 @@ BANNER_TTL_MIN = 40
 ALERT_TTL_MIN = 24 * 60
 
 DEFAULT_WEIGHTS = {"official": 0.9, "recon": 0.7, "regional": 0.55, "aggregator": 0.15}
+
+# Where attacks come from: the border with Russia, the front line, Crimea and the sea. A report
+# that only says "heading to X" puts the target a short way before X, on the side it most likely
+# comes from, instead of dropping it or parking it in the middle of the region.
+HOSTILE_ANCHORS = [
+    (52.30, 33.20), (52.10, 34.10),                    # Bryansk border
+    (51.40, 34.60), (51.20, 35.40),                    # Kursk border
+    (50.60, 35.90), (50.40, 36.90), (50.20, 37.90),    # Belgorod border
+    (49.90, 39.50),                                    # Voronezh / Luhansk
+    (49.70, 37.80), (49.00, 37.90), (48.30, 37.20),    # front: Kupiansk, Lyman, Pokrovsk
+    (47.85, 36.80), (47.66, 36.26), (47.45, 35.30),    # Velyka Novosilka, Huliaipole, Vasylivka
+    (46.80, 33.50), (46.60, 32.70), (46.50, 31.60),    # Dnipro river line, Kinburn spit
+    (45.00, 33.60), (45.10, 35.40), (46.05, 38.15),    # Crimea west / east, Azov coast
+    (45.40, 31.20),                                    # Black Sea off Odesa
+]
+# local channels report "на X" when a drone is roughly this close; short-range drones much closer
+APPROACH_KM = {"drone": 15, "fpv": 4, "molniya": 6, "lancet": 8}
+IMPLIED_CUE = re.compile(r"уважн|увага|обережн|⚠|❗|‼|повз|через|над\b|курс|кружля|крутит|летить|рух")
+
+
+def approach_bearing(lat: float, lon: float) -> float:
+    """Direction of travel of a target arriving at (lat, lon) from the nearest hostile area."""
+    a = min(HOSTILE_ANCHORS, key=lambda p: haversine(p[0], p[1], lat, lon))
+    return bearing(a[0], a[1], lat, lon)
 
 
 def _lookup(table: dict, threat: str) -> float:
@@ -108,7 +133,7 @@ class Track:
             return bearing(last.lat, last.lon, self.dest.lat, self.dest.lon)
         if self.heading is not None and self.heading_ts >= self.last_ts - 15 * 60:
             return self.heading
-        pts = [p for p in self.points if p.precision in ("point", "region", "origin")]
+        pts = [p for p in self.points if p.precision in ("point", "approx", "region", "origin")]
         for prev in reversed(pts[:-1]):
             if haversine(prev.lat, prev.lon, last.lat, last.lon) > 5:
                 return bearing(prev.lat, prev.lon, last.lat, last.lon)
@@ -133,9 +158,11 @@ class Track:
         if last.precision == "inbound" and p.precision != "inbound":
             self.points[-1] = p          # replace a guessed position with a real one
             return
-        if p.precision in ("region", "origin") and last.precision == "point" and \
+        if p.precision in ("region", "origin", "approx") and last.precision == "point" and \
                 haversine(last.lat, last.lon, p.lat, p.lon) < 130:
             return                        # coarse report refreshes the track but does not move it back
+        if p.precision == "region" and last.precision == "approx" and haversine(last.lat, last.lon, p.lat, p.lon) < 130:
+            return                        # an estimate near the destination beats the middle of the region
         if haversine(last.lat, last.lon, p.lat, p.lon) < 3:
             if p.precision == "point" and last.precision != "point":
                 self.points[-1] = p
@@ -269,25 +296,70 @@ class Fusion:
         t.sources.setdefault(ref.channel, ref.tier)
         t.refs.append(ref)
 
+    @staticmethod
+    def estimate(s: Sighting) -> PlaceRef | None:
+        """Best guess of a target's position when the report does not pin it down.
+
+        * "від Близнюків на Юріївку": it has just passed a known town, a little way towards the target
+        * "в 50 км від Львова, курс на Львів": that far out, on the side it comes from
+        * "Сумщина: БпЛА курсом на Шалигине" / "Шахед на Полтаву": a drone shortly before the place,
+          on the side it approaches from (stated heading, origin, region it is in, or the nearest
+          hostile area)
+        """
+        pos, dest, origin = s.pos, s.dest, s.origin
+        if pos is not None and pos.precision == "point" and not pos.dist_km:
+            return None
+        drone = THREATS[s.threat]["family"] == "drone"
+        if (drone and origin is not None and origin.precision == "point" and _ukr(origin.place.oblast)
+                and origin.place.kind != "F"):
+            lat, lon = origin.lat, origin.lon
+            if dest is not None:
+                d = haversine(lat, lon, dest.lat, dest.lon)
+                lat, lon = destination(lat, lon, bearing(lat, lon, dest.lat, dest.lon), min(8.0, d * 0.3))
+            return PlaceRef(origin.place, "current", lat, lon, "approx", f"past {origin.place.name}", origin.start)
+        if pos is not None and pos.dist_km:
+            if dest is not None and dest.place.key != pos.place.key:
+                return None
+            travel = s.heading if s.heading is not None else approach_bearing(pos.place.lat, pos.place.lon)
+            lat, lon = destination(pos.place.lat, pos.place.lon, (travel + 180) % 360, pos.dist_km)
+            return PlaceRef(pos.place, "current", lat, lon, "approx", pos.label, pos.start)
+        if not drone or dest is None or dest.precision != "point" or not _ukr(dest.place.oblast):
+            return None
+        travel = s.heading
+        if travel is None and origin is not None and haversine(origin.lat, origin.lon, dest.lat, dest.lon) > 20:
+            travel = bearing(origin.lat, origin.lon, dest.lat, dest.lon)
+        if (travel is None and pos is not None and pos.place.oblast != dest.place.oblast
+                and haversine(pos.lat, pos.lon, dest.lat, dest.lon) > 40):
+            travel = bearing(pos.lat, pos.lon, dest.lat, dest.lon)      # in one region, heading into the next
+        if travel is None:
+            travel = approach_bearing(dest.lat, dest.lon)
+        lat, lon = destination(dest.lat, dest.lon, (travel + 180) % 360, _lookup(APPROACH_KM, s.threat))
+        return PlaceRef(dest.place, "current", lat, lon, "approx", f"approaching {dest.place.name}", dest.start)
+
     def on_sighting(self, s: Sighting, ref: MsgRef, idx: int, used: set[str]) -> None:
         ts = ref.ts
         pos_ref = s.pos
         precision = None
-        if pos_ref is None and s.origin is not None:
+        est = self.estimate(s)
+        if est is not None:
+            pos_ref = est
+        elif pos_ref is None and s.origin is not None:
             pos_ref, precision = s.origin, "origin"
         pos = self._point(pos_ref, ts, ref.channel, precision) if pos_ref else None
         via = [self._point(v, ts, ref.channel) for v in s.via]
 
-        best, best_cost = None, None
+        best, best_cost, best_by_dest = None, None, False
         for t in self._active(ts):
             if t.id in used:
                 continue
-            if pos_ref is not None:
-                c = self._cost(t, s, pos_ref, ts)
-            else:
-                c = self._cost_dest_only(t, s, ts)
+            c = self._cost(t, s, pos_ref, ts) if pos_ref is not None else None
+            by_dest = False
+            if s.pos is None and s.dest is not None:
+                cd = self._cost_dest_only(t, s, ts)          # same destination as a known track
+                if cd is not None and (c is None or cd < c):
+                    c, by_dest = cd, True
             if c is not None and (best_cost is None or c < best_cost):
-                best, best_cost = t, c
+                best, best_cost, best_by_dest = t, c, by_dest
 
         if best is None:
             if pos is None:
@@ -297,10 +369,12 @@ class Fusion:
                     return
                 pos = self._point(s.dest, ts, ref.channel, "inbound")
             elif ref.tier == "aggregator" and pos.precision != "point":
-                return                     # an aggregator's "somewhere in the region" only confirms targets
+                return                     # an aggregator's "somewhere in the region" or a guess only confirms targets
             t = Track(self._tid(ref.channel, ref.msg_id, idx, s.threat), s.threat, ts, ts)
             self.tracks.append(t)
             best = t
+        elif best_by_dest and pos is not None and pos.precision == "approx" and best.last.precision == "point":
+            pos = None                     # matched by destination: keep the observed position, not a guess
         used.add(best.id)
         self._apply(best, s, ref, pos, via)
 
@@ -402,11 +476,22 @@ class Fusion:
         sightings = list(parsed.sightings)
         # terse follow-up ("Гостомель") continues what this channel reported a few minutes ago
         last = self._last_threat.get(ref.channel)
-        if parsed.bare_places and last and ref.ts - last[1] <= 8 * 60 and ref.tier != "aggregator":
+        if parsed.bare_places and ref.tier != "aggregator":
             cur = [r for r in parsed.bare_places if r.role == "current"]
             dst = [r for r in parsed.bare_places if r.role == "dest"]
-            sightings.append(Sighting(last[0], pos=cur[-1] if cur else None, dest=dst[0] if dst else None,
-                                      text=ref.text, own_threat=False))
+            org = [r for r in parsed.bare_places if r.role == "origin"]
+            threat = None
+            if last and ref.ts - last[1] <= 12 * 60:
+                threat = last[0]
+            elif self.channels.get(ref.channel, {}).get("implied") and (
+                    dst or org or (any(r.precision == "point" for r in cur) and IMPLIED_CUE.search(ref.text.lower()))):
+                # local channels whose terse "⚠️ на Михайлівку з Полтавської" / "Сарни - уважно!" always means a drone
+                threat = self.channels[ref.channel]["implied"]
+            if threat in THREATS:
+                pos = next((r for r in reversed(cur) if r.precision == "point"), cur[-1] if cur else None)
+                sightings.append(Sighting(threat, pos=pos, dest=dst[0] if dst else None,
+                                          origin=org[0] if org else None, text=ref.text, own_threat=False))
+                self._last_threat[ref.channel] = (threat, ref.ts)     # "Далі Малин" ... "Далі Коростень"
         for i, s in enumerate(sightings):
             self.on_sighting(s, ref, i, used)
         if parsed.sightings:
@@ -418,6 +503,10 @@ class Fusion:
             gone = {"threat:" + t for t in parsed.threats_cleared}
             self.banners = [b for b in self.banners if b["kind"] not in gone or b["ts"] > ref.ts]
             self.events = [e for e in self.events if not (e["kind"] == "threat" and e.get("threat") in parsed.threats_cleared)]
+        threat_notes = {ev.threat for ev in parsed.events if ev.kind == "threat" and ev.threat}
+        if len(threat_notes) == 1 and not parsed.sightings:
+            # "Тривога — Золотоніський район. Загроза ударних БпЛА." then "⚠️ на Михайлівку"
+            self._last_threat[ref.channel] = (threat_notes.pop(), ref.ts)
         for ev in parsed.events:
             if ev.kind == "kill":
                 self.on_kill(ev, ref)
@@ -502,6 +591,7 @@ class Fusion:
         pa, pb = a.last, b.last
         d = haversine(pa.lat, pa.lon, pb.lat, pb.lon)
         coarse = {pa.precision, pb.precision} & {"region", "origin"}
+        approx = "approx" in {pa.precision, pb.precision}
         if {pa.precision, pb.precision} & {"inbound"}:
             inb, other = (a, b) if pa.precision == "inbound" else (b, a)
             near_dest = other.dest is not None and haversine(other.dest.lat, other.dest.lon, inb.last.lat, inb.last.lon) < 35
@@ -509,7 +599,7 @@ class Fusion:
         ha, hb = a.heading_estimate(), b.heading_estimate()
         # continuation: one was heading to a place and the other has since been reported near it
         older, newer = (a, b) if a.last_ts <= b.last_ts else (b, a)
-        if (older.dest is not None and newer.last.precision == "point" and newer.last_ts - older.last_ts <= 20 * 60
+        if (older.dest is not None and newer.last.precision in ("point", "approx") and newer.last_ts - older.last_ts <= 20 * 60
                 and newer.first_ts >= older.last_ts - 5 * 60       # it appeared as the other went quiet
                 and (ha is None or hb is None or angle_diff(ha, hb) < 90)   # and flies on the same way
                 and haversine(older.dest.lat, older.dest.lon, newer.last.lat, newer.last.lon) < (50 if a.family == "drone" else 40)):
@@ -520,7 +610,7 @@ class Fusion:
                 and d < 80 and pa.oblast == pb.oblast and abs(a.last_ts - b.last_ts) <= 15 * 60
                 and min(len(a.sources), len(b.sources)) <= 3):
             return True
-        limit = (110 if coarse else 30) if a.family == "drone" else (150 if coarse else 60)
+        limit = (110 if coarse else 40 if approx else 30) if a.family == "drone" else (150 if coarse else 80 if approx else 60)
         if d > limit:
             return False
         if coarse:
@@ -552,7 +642,8 @@ class Fusion:
     def merge_duplicates(self, now: float) -> None:
         live = [t for t in self.tracks if t.ended is None and now - t.last_ts <= _lookup(STALE_AFTER, t.threat) * 60]
         # the best-supported, most precise track absorbs the others
-        live.sort(key=lambda t: (t.last.precision != "point", -len(t.sources), -t.last_ts))
+        rank = {"point": 0, "approx": 1}
+        live.sort(key=lambda t: (rank.get(t.last.precision, 2), -len(t.sources), -t.last_ts))
         gone: set[str] = set()
         for i, a in enumerate(live):
             if a.id in gone:

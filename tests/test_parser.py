@@ -1,6 +1,6 @@
 import pytest
 
-from dronemap.gazetteer import GAZETTEER
+from dronemap.gazetteer import GAZETTEER, haversine
 from dronemap.parser import parse_message
 
 
@@ -367,3 +367,42 @@ def test_alert_post_with_two_sections():
                       "• Гайсинський район (Вінницька обл.)\n• Жмеринський район (Вінницька обл.)", (), "official")
     assert r.alerts_on == {"UA5308"} and r.alert_levels == {"UA5308": "yellow"}
     assert r.alerts_off == {'UA0506', 'UA0504'}
+
+
+# ------------------------------------------------------------------ pinpointing
+
+def test_heading_from_zi_direction():
+    s = one("🏍 Реактивний БпЛА на Дніпро зі сходу.")
+    assert label(s.dest) == "dnipro" and s.heading == 270.0
+
+
+def test_between_two_towns_is_one_target_in_the_middle():
+    s = one("БпЛА між Ніжином та Носівкою", ["chernihiv"])
+    n, m = GAZETTEER.places["nizhyn"], (50.93, 31.58)                      # Nosivka
+    assert s.pos.precision == "point" and "between" in s.pos.label
+    assert abs(s.pos.lat - (n.lat + m[0]) / 2) < 0.03 and abs(s.pos.lon - (n.lon + m[1]) / 2) < 0.03
+
+
+def test_distance_from_a_town_is_a_position_not_an_origin():
+    s = one("Шахед в 10 км на південь від Полтави", ["poltava"])
+    p = GAZETTEER.places["poltava"]
+    assert s.pos.role == "current" and s.origin is None
+    assert 9 < haversine(s.pos.lat, s.pos.lon, p.lat, p.lon) < 11 and s.pos.lat < p.lat
+    s = one("Шахед за 15 км від Кременчука курсом на північ", ["poltava"])
+    assert label(s.pos) == "kremenchuk" and s.origin is None and s.pos.dist_km == 15 and s.heading == 0.0
+
+
+def test_region_header_applies_to_the_lines_below():
+    r = parse_message("Львівщина:\nРеактивний БпЛА курсом на Львів\nРеактивний БпЛА курсом на Дрогобич", [], "recon")
+    assert [(label(s.pos), label(s.dest)) for s in r.sightings] == [("obl_lviv", "lviv"), ("obl_lviv", "drohobych")]
+
+
+def test_channel_footer_does_not_turn_a_report_into_an_alert_post():
+    r = parse_message("❗️Реактивний на Кривий Ріг\n\n🛵2х шахеди на Миколаїв.\n\nПідтримати канал☕️\n\n✅️ Чому тривога?", [], "regional")
+    assert [(s.threat, label(s.dest)) for s in r.sightings] == [("jet_shahed", "kryvyi_rih"), ("shahed", "mykolaiv")]
+    assert not r.alerts_on
+
+
+def test_dali_follow_up_is_a_destination():
+    r = parse_message("Далі Малин", ["zhytomyr"], "regional")
+    assert [(b.place.key, b.role) for b in r.bare_places] == [("malyn", "dest")]

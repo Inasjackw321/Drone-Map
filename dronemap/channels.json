@@ -48,6 +48,15 @@
       "backfill_hours": 12
     },
     {
+      "handle": "kyivcityofficial",
+      "name": "КМДА (Kyiv city)",
+      "tier": "official",
+      "area": "Kyiv city",
+      "regions": [
+        "kyiv_city"
+      ]
+    },
+    {
       "handle": "rozvidkaneba",
       "name": "Sky exploration",
       "tier": "recon",
@@ -555,6 +564,117 @@
       ]
     },
     {
+      "handle": "zt_radar",
+      "name": "MNR | монітор Житомир",
+      "tier": "regional",
+      "area": "Zhytomyr",
+      "regions": [
+        "zhytomyr"
+      ]
+    },
+    {
+      "handle": "zhytomyr_nebo",
+      "name": "Житомирське небо",
+      "tier": "regional",
+      "area": "Zhytomyr",
+      "regions": [
+        "zhytomyr"
+      ]
+    },
+    {
+      "handle": "khmel_radar",
+      "name": "Хмель | Радар",
+      "tier": "regional",
+      "area": "Khmelnytskyi",
+      "regions": [
+        "khmelnytskyi"
+      ]
+    },
+    {
+      "handle": "lutsk_radar",
+      "name": "MNR | монітор Луцьк",
+      "tier": "regional",
+      "area": "Volyn",
+      "regions": [
+        "volyn"
+      ]
+    },
+    {
+      "handle": "rivne_radar",
+      "name": "Rivne AirDefense",
+      "tier": "regional",
+      "area": "Rivne",
+      "regions": [
+        "rivne"
+      ]
+    },
+    {
+      "handle": "rivne_nebo",
+      "name": "Рівненське небо",
+      "tier": "regional",
+      "area": "Rivne",
+      "regions": [
+        "rivne"
+      ],
+      "implied": "shahed"
+    },
+    {
+      "handle": "lvivradar",
+      "name": "Радар Львів",
+      "tier": "regional",
+      "area": "Lviv",
+      "regions": [
+        "lviv"
+      ]
+    },
+    {
+      "handle": "cherkasy_monitor",
+      "name": "Cherkasy Monitor",
+      "tier": "regional",
+      "area": "Cherkasy",
+      "regions": [
+        "cherkasy"
+      ],
+      "implied": "uav"
+    },
+    {
+      "handle": "poltava_monitor",
+      "name": "Страж Полтавщини",
+      "tier": "regional",
+      "area": "Poltava",
+      "regions": [
+        "poltava"
+      ]
+    },
+    {
+      "handle": "krmonitoring",
+      "name": "Кривий Ріг моніторинг",
+      "tier": "regional",
+      "area": "Kryvyi Rih",
+      "regions": [
+        "dnipro"
+      ],
+      "implied": "shahed"
+    },
+    {
+      "handle": "eyes_everywhere_ua",
+      "name": "Очі Всюди",
+      "tier": "regional",
+      "area": "Zaporizhzhia",
+      "regions": [
+        "zaporizhzhia"
+      ]
+    },
+    {
+      "handle": "zp_monitor",
+      "name": "Оперативно Єціль | Запоріжжя",
+      "tier": "regional",
+      "area": "Zaporizhzhia",
+      "regions": [
+        "zaporizhzhia"
+      ]
+    },
+    {
       "handle": "eRadarrua",
       "tier": "aggregator",
       "area": "All of Ukraine",
@@ -698,6 +818,13 @@
         "chernivtsi",
         "khmelnytskyi"
       ]
+    },
+    {
+      "handle": "StrategicaviationT",
+      "name": "Стратегічна авіація",
+      "tier": "aggregator",
+      "area": "Nationwide",
+      "regions": []
     },
     {
       "handle": "lpr1_treugolnik",

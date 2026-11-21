@@ -15,6 +15,13 @@ reports into tracks.
   shows each target as an icon at its estimated current position, pointing the way it flies. Between
   reports it keeps moving along its reported course at its estimated speed, and glides to the real
   position when the next report arrives. No trails are drawn; ended targets leave the map.
+- **Pinpointing:** a position comes from the most exact thing a post says: a town or village
+  ("над Ромнами"), a spot between two towns ("між Ніжином та Носівкою"), a distance and direction
+  ("10 км на південь від Полтави"), or a town just passed ("від Близнюків на Юріївку"). When a post
+  only says where a drone is heading ("Сумщина: БпЛА курсом на Шалигине", "Шахед на Полтаву"), the
+  icon is placed a short way before that place, on the side it comes from (stated direction, origin,
+  the region it is in, or the nearest border/front), and marked *estimated* with a dashed ring.
+  Short local follow-ups ("Далі Малин", "Повз Більськ") continue the channel's last report.
 - **Russia layer:** drone and missile danger over Russia and the occupied territory, announced by
   Russian-side channels (`@lpr1_treugolnik`), shown in cyan as its own layer. It never mixes with
   Ukrainian targets or alerts.
@@ -83,7 +90,8 @@ Telegram channels ──► scraper (t.me/s/<channel> web preview, or Telethon)
 
 * **Sources**: `dronemap/channels.json` lists every channel with its trust tier and region. Edit it
   to add or remove channels. The region tells the parser which villages a channel is likely to
-  mean.
+  mean. `"implied": "shahed"` marks a local channel whose terse posts ("⚠️ на Михайлівку",
+  "Сарни - уважно!") always mean a drone even without the word.
 * **Places**: `dronemap/gazetteer.py` is a curated list of about 500 cities, towns, regions, seas
   and launch areas, with Ukrainian and Russian spellings and case forms.
   `dronemap/data/settlements.tsv.gz` adds 32,000 villages from GeoNames. A village only counts
