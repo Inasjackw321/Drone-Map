@@ -65,7 +65,13 @@
     DMBase.setOptions({ showAlerts: S.showAlerts, showOccupied: S.showOccupied, showRussia: S.showRussia });
     if (S.showDetail) DMBase.setDetail(true);
     if (S.state) renderMap();
-  }).catch(err => console.error('base map', err));
+  }).catch(err => {
+    // never leave a blank map: fall back to the street map and say why
+    console.error('base map', err);
+    DMBase.setDetail(true);
+    S.baseMapFailed = true;
+    toast('The district map could not load, showing the street map instead. Try restarting with start.bat.');
+  });
 
   const layers = {
     areas: L.layerGroup().addTo(map),
@@ -136,9 +142,9 @@
     const cls = ['mk', t.status, t.confirmed ? '' : 'unconf', sel ? 'sel' : '', t.precision === 'inbound' ? 'inbound' : '',
       t.precision === 'region' ? 'approx' : '', hot ? 'hot' : ''].join(' ');
     const badge = t.count > 1 ? `<span class="mk-n">${t.count}</span>` : '';
-    const size = info(t.threat).family === 'drone' ? 26 : 28;          // drones a touch smaller: "mini drones"
+    const size = info(t.threat).family === 'drone' ? 30 : 32;          // drones a touch smaller: "mini drones"
     return { key: [cls, t.threat, t.count].join('|'), icon: L.divIcon({
-      className: '', iconSize: [30, 30], iconAnchor: [15, 15],
+      className: '', iconSize: [34, 34], iconAnchor: [17, 17],
       html: `<div class="${cls}" style="--c:${info(t.threat).color}"><div class="mk-rot">${mapSvg(t.threat, size)}</div>${badge}</div>`,
     }) };
   }
@@ -148,7 +154,7 @@
     if (!d) {
       d = { marker: null, iconKey: '', pos: null, glide: null, rot: null };
       d.marker = L.marker([t.lat, t.lon], { riseOnHover: true, keyboard: true })
-        .bindTooltip(() => tipHtml(d.t), { className: 'dm-tip', direction: 'top', offset: [0, -15] })
+        .bindTooltip(() => tipHtml(d.t), { className: 'dm-tip', direction: 'top', offset: [0, -17] })
         .on('click', () => select(d.t.id, false))
         .addTo(layers.markers);
       drawn.set(t.id, d);
@@ -300,6 +306,26 @@
     if (!k) return;
     S.dismissed.add(k); prefs.set('dismissed', [...S.dismissed].slice(-50)); renderBanners();
     requestAnimationFrame(() => document.documentElement.style.setProperty('--banner-h', $('#banners').offsetHeight + 'px'));
+  });
+
+  // ------------------------------------------------------------------ on-map legend
+  S.legendHidden = prefs.get('legendHidden', window.matchMedia('(max-width: 820px)').matches);
+  function renderLegend() {
+    const el = $('#legend');
+    if (!el) return;
+    const shown = mapTracks();
+    const items = FAMILY_ORDER.filter(k => shown.some(t => t.threat === k))
+      .map(k => `<div class="lg-i">${mapSvg(k, 18)}<span>${esc(info(k).short)}</span></div>`);
+    const sw = (c, l) => `<div class="lg-i"><i class="swatch" style="background:${c}"></i><span>${l}</span></div>`;
+    if (S.showAlerts) items.push(sw('#a52f30', 'Red alert'), sw('#c2981f', 'Yellow alert'));
+    if (S.showOccupied) items.push(sw('#4f2027', 'Occupied'));
+    if (S.showRussia && (S.state?.ru_zones || []).length) items.push(sw('#1fb5cc', 'Danger in Russia'));
+    el.innerHTML = `<button class="lg-toggle" aria-expanded="${!S.legendHidden}">Legend ${S.legendHidden ? '▴' : '▾'}</button>` +
+      (S.legendHidden ? '' : `<div class="lg-body">${items.join('') || '<span class="hint">No targets on the map</span>'}</div>`);
+  }
+  $('#legend').addEventListener('click', e => {
+    if (!e.target.closest('.lg-toggle')) return;
+    S.legendHidden = !S.legendHidden; prefs.set('legendHidden', S.legendHidden); renderLegend();
   });
 
   // ------------------------------------------------------------------ filters
@@ -751,7 +777,7 @@
   // ------------------------------------------------------------------ data loop
   function renderAll(mapToo) {
     if (S.selected && !(S.state?.tracks || []).some(t => t.id === S.selected)) S.selected = null;
-    renderSummary(); renderFilters(); renderBanners(); renderPanel();
+    renderSummary(); renderFilters(); renderBanners(); renderPanel(); renderLegend();
     if (mapToo) renderMap();
     $('#tabCountTargets').textContent = visible().filter(t => t.status === 'active').length || '';
     $('#tabCountAlerts').textContent = (S.state?.alerts || []).length || '';

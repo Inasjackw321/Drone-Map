@@ -53,6 +53,7 @@ window.DMBase = (() => {
     pane('dm-labels', 350, true);
     map.getContainer().style.background = PAL.sea;
     const r = await fetch('data/admin.json');
+    if (!r.ok) throw new Error(`data/admin.json: HTTP ${r.status}`);
     data = await r.json();
 
     layers.neighbors = L.geoJSON(data.neighbors, { pane: 'dm-base', interactive: false,
