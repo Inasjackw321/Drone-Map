@@ -110,51 +110,78 @@
     return L.divIcon({ className: '', iconSize: [12, 12], iconAnchor: [6, 6],
       html: `<svg class="trk-arrow" viewBox="0 0 12 12" width="12" height="12" style="transform:rotate(${deg}deg);opacity:${faded ? 0.4 : 0.95}"><path d="M6 1.5 L10.5 10 L6 7.6 L1.5 10 Z" fill="${c}" stroke="#0b0e12" stroke-width="1" stroke-linejoin="round"/></svg>` });
   }
-  // where the dotted course line points: the reported destination town while that is still the
-  // course, otherwise a point ahead on the heading (a region as destination only gives a direction)
-  function aimPoint(t) {
-    if (t.precision === 'inbound') return null;
-    if (t.dest && t.heading_source === 'dest' && t.dest.precision === 'point') return [t.dest.lat, t.dest.lon];
-    if (t.heading != null) return project(t.lat, t.lon, t.heading, lookahead(t));
-    return null;
-  }
-  // Solid legs between reported towns (with an arrowhead showing which way it flew), faint dashed
-  // legs to or from region-wide or estimated positions, a dot per report, and a dotted line on to
-  // where it is heading. The icon itself moves on ahead of the last report along that dotted line.
-  function drawTrackPath(t) {
-    const c = info(t.threat).color, sel = S.selected === t.id;
-    const faded = t.status !== 'active' || !t.confirmed;
-    const pts = t.points.filter(p => p.precision !== 'inbound');
-    for (let i = 1; i < pts.length; i++) {
-      const a = pts[i - 1], b = pts[i];
-      const exact = a.precision === 'point' && b.precision === 'point';
-      L.polyline([[a.lat, a.lon], [b.lat, b.lon]], exact
-        ? { color: c, weight: sel ? 4 : 2.6, opacity: faded ? 0.35 : 0.9, lineCap: 'round', dashArray: t.confirmed ? null : '6 7', interactive: false }
-        : { color: c, weight: 2, opacity: faded ? 0.2 : 0.45, dashArray: '3 8', interactive: false }).addTo(layers.tracks);
-      if (exact && distKm(a, b) >= 8) {
-        L.marker([(a.lat + b.lat) / 2, (a.lon + b.lon) / 2], { icon: arrowIcon(c, screenAngle([a.lat, a.lon], [b.lat, b.lon]), faded), interactive: false, keyboard: false })
-          .addTo(layers.tracks);
+  // Trails belong to the icons: the solid path through the towns the target was reported over
+  // (from the server's cleaned trail, fading with age), a dashed link from the last report to where
+  // the icon is now (estimated), and a dotted line on to where it is going. The live parts are
+  // updated with the icon on every frame, so the trail never comes apart from the icon.
+  const TRAIL_FADE_MIN = { drone: 90, jet_shahed: 60, missile: 25, kab: 12, ballistic: 10, kinzhal: 10, recon: 120, lancet: 40, fpv: 20, molniya: 30 };
+  const fadeMin = t => TRAIL_FADE_MIN[t.threat] || TRAIL_FADE_MIN[t.family] || 60;
+  const wantsTrail = t => t.status !== 'ended' && (S.showTracks || S.selected === t.id);
+
+  function buildTrail(d) {
+    const t = d.t, c = info(t.threat).color, sel = S.selected === t.id;
+    const faded = t.status !== 'active' || !t.confirmed || (S.selected && !sel);     // others step back
+    const tr = t.trail || [];
+    const g = L.layerGroup();
+    for (let i = 1; i < tr.length; i++) {
+      const a = tr[i - 1], b = tr[i];
+      const fresh = Math.max(0, 1 - (now() - b.ts) / (fadeMin(t) * 60));
+      L.polyline([[a.lat, a.lon], [b.lat, b.lon]], {
+        color: c, weight: sel ? 4 : 2.6, opacity: (faded ? 0.25 : 0.35) + (faded ? 0.15 : 0.55) * fresh,
+        lineCap: 'round', dashArray: t.confirmed ? null : '6 7', interactive: false,
+      }).addTo(g);
+      if (distKm(a, b) >= 10) {
+        L.marker([(a.lat + b.lat) / 2, (a.lon + b.lon) / 2], { icon: arrowIcon(c, screenAngle([a.lat, a.lon], [b.lat, b.lon]), faded), interactive: false, keyboard: false }).addTo(g);
       }
     }
-    pts.slice(0, -1).forEach(p => {
-      if (p.precision !== 'point') return;
-      L.circleMarker([p.lat, p.lon], { radius: sel ? 4 : 3, color: '#0b0e12', weight: 1, fillColor: c, fillOpacity: faded ? 0.35 : 0.95 })
+    tr.forEach(p => {
+      L.circleMarker([p.lat, p.lon], { radius: sel ? 4 : 3, color: '#0b0e12', weight: 1, fillColor: c, fillOpacity: faded ? 0.4 : 0.95 })
         .bindTooltip(`${esc(p.place)} · ${clock(p.ts)}`, { className: 'dm-tip', direction: 'top' })
-        .on('click', () => select(t.id, false))
-        .addTo(layers.tracks);
+        .on('click', () => select(t.id, false)).addTo(g);
     });
-    if (t.status !== 'active') return;
-    const aim = aimPoint(t);
-    if (aim) {
-      L.polyline([[t.lat, t.lon], aim], { color: c, weight: sel ? 3 : 2, opacity: faded ? 0.3 : 0.75, dashArray: '1 7', lineCap: 'round', interactive: false })
-        .addTo(layers.tracks);
+    d.live = L.polyline([], { color: c, weight: sel ? 2.6 : 2, opacity: faded ? 0.35 : 0.7, dashArray: '5 6', interactive: false }).addTo(g);
+    d.course = L.polyline([], { color: c, weight: sel ? 3 : 2, opacity: faded ? 0.3 : 0.75, dashArray: '1 7', lineCap: 'round', interactive: false }).addTo(g);
+    d.destMk = null;
+    if (t.status === 'active' && t.dest && t.heading_source === 'dest' && t.dest.precision === 'point'
+        && (sel || distKm(t, t.dest) <= 2 * lookahead(t))) {
+      d.destMk = L.circleMarker([t.dest.lat, t.dest.lon], { radius: 5, color: c, weight: 2, dashArray: '2 3', fill: false, opacity: faded ? 0.4 : 0.9 })
+        .bindTooltip(`→ ${esc(t.dest.name)}`, { permanent: sel, className: 'dest-label', direction: 'right', offset: [7, 0] }).addTo(g);
     }
-    if (t.dest && t.heading_source === 'dest' && t.dest.precision === 'point') {
-      L.circleMarker([t.dest.lat, t.dest.lon], { radius: 5, color: c, weight: 2, dashArray: '2 3', fill: false, opacity: faded ? 0.4 : 0.9, interactive: !sel })
-        .bindTooltip(`→ ${esc(t.dest.name)}`, { permanent: sel, className: 'dest-label', direction: 'right', offset: [7, 0] })
-        .addTo(layers.tracks);
-    }
+    return g;
   }
+
+  function syncTrail(d) {
+    const t = d.t, show = wantsTrail(t);
+    const key = show ? JSON.stringify([t.trail, t.status, t.confirmed, t.dest, t.heading_source, S.selected, Math.floor(now() / 60)]) : '';
+    if (key === d.trailKey) return;
+    d.trailKey = key;
+    if (d.trailLayer) { layers.tracks.removeLayer(d.trailLayer); d.trailLayer = d.live = d.course = null; }
+    if (show) d.trailLayer = buildTrail(d).addTo(layers.tracks);
+  }
+
+  // the live parts: last report -> icon (estimated), icon -> where it is going
+  function updateLive(d, p) {
+    if (!d.trailLayer) return;
+    const t = d.t, pos = { lat: d.pos[0], lon: d.pos[1] };
+    const sel = S.selected === t.id, reach = lookahead(t);
+    const last = (t.trail || [])[t.trail?.length - 1];
+    // last report -> icon: only a hop it could plausibly have made; a jump to an estimate near a new
+    // destination far away would draw a flight nobody saw
+    const hop = last ? distKm(last, pos) : 0;
+    d.live.setLatLngs(last && hop > 0.5 && hop <= 1.5 * reach ? [[last.lat, last.lon], d.pos] : []);
+    let aim = null;
+    if (t.status === 'active' && !['region', 'inbound', 'origin'].includes(t.precision)) {
+      const toDest = t.dest && t.heading_source === 'dest' && t.dest.precision === 'point';
+      const left = toDest ? distKm(pos, t.dest) : 0;
+      if (toDest && left > 1 && (sel || left <= reach)) aim = [t.dest.lat, t.dest.lon];
+      else {
+        const brg = toDest ? bearing(pos, t.dest) : (p.brg ?? t.heading);
+        if (brg != null && (!toDest || left > 1)) aim = project(pos.lat, pos.lon, brg, Math.min(reach, toDest ? left : reach));
+      }
+    }
+    d.course.setLatLngs(aim ? [d.pos, aim] : []);
+  }
+
   function bearing(a, b) {
     const p1 = toRad(a.lat), p2 = toRad(b.lat), dl = toRad(b.lon - a.lon);
     const x = Math.sin(dl) * Math.cos(p2), y = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
@@ -233,6 +260,7 @@
     const { key, icon } = iconFor(t);
     if (key !== d.iconKey) { d.marker.setIcon(icon); d.iconKey = key; d.rot = null; }
     d.marker.setZIndexOffset(zFor(t));
+    syncTrail(d);
     placeTrack(d, performance.now());
   }
 
@@ -249,6 +277,7 @@
     }
     d.pos = [lat, lon];
     d.marker.setLatLng(d.pos);
+    updateLive(d, p);
     const rot = t.precision === 'inbound' ? 0 : (p.brg ?? t.heading ?? 0);
     if (d.rot === null || Math.abs(rot - d.rot) > 0.5) {
       const el = d.marker.getElement()?.querySelector('.mk-rot');
@@ -263,7 +292,11 @@
     const vis = mapTracks();
     const ids = new Set(vis.map(t => t.id));
     for (const [id, d] of drawn) {
-      if (!ids.has(id)) { layers.markers.removeLayer(d.marker); drawn.delete(id); }
+      if (!ids.has(id)) {
+        layers.markers.removeLayer(d.marker);
+        if (d.trailLayer) layers.tracks.removeLayer(d.trailLayer);
+        drawn.delete(id);
+      }
     }
     for (const t of vis.slice().reverse()) upsertTrack(t);
   }
@@ -308,10 +341,9 @@
   }
 
   function renderMap() {
-    layers.events.clearLayers(); layers.areas.clearLayers(); layers.tracks.clearLayers();
+    layers.events.clearLayers(); layers.areas.clearLayers();
     if (!S.state) return;
     for (const e of S.state.events) drawEvent(e);
-    for (const t of mapTracks()) if (S.showTracks || S.selected === t.id) drawTrackPath(t);
     renderTracks();
     DMBase.setAlerts(S.state.alerts);
     DMBase.setRuZones(S.state.ru_zones);
@@ -395,6 +427,7 @@
     const sw = (c, l) => `<div class="lg-i"><i class="swatch" style="background:${c}"></i><span>${l}</span></div>`;
     if (S.showTracks && shown.length) {
       items.push('<div class="lg-i"><i class="lg-line"></i><span>Flown path</span></div>',
+        '<div class="lg-i"><i class="lg-line dashed"></i><span>Since last report</span></div>',
         '<div class="lg-i"><i class="lg-line dotted"></i><span>Heading to</span></div>');
     }
     if (S.showAlerts) items.push(sw('#a52f30', 'Red alert'), sw('#c2981f', 'Yellow alert'));
@@ -887,7 +920,7 @@
     if (id) {
       const t = S.state.tracks.find(x => x.id === id);
       if (t && fly) {
-        const pts = t.points.map(p => [p.lat, p.lon]);
+        const pts = [...(t.trail || []).map(p => [p.lat, p.lon]), [t.lat, t.lon]];
         if (t.dest) pts.push([t.dest.lat, t.dest.lon]);
         if (pts.length > 1) map.flyToBounds(pts, { padding: [70, 70], maxZoom: 9, duration: 0.6 });
         else map.flyTo([t.lat, t.lon], Math.max(map.getZoom(), 8), { duration: 0.6 });

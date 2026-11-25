@@ -611,6 +611,17 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
     caps = {normalize(w).strip("-") for w in CAPS_RE.findall(text)}
     seg_refs = {i: locate(seg, prefer_oblasts, village_prefer, caps, nationwide=not prefer_oblasts)
                 for i, seg in enumerate(segments)}
+    if tier == "regional" and prefer_oblasts:
+        # A regional observer reports what is over its own area. A town far from it ("Затока" in a
+        # Dnipro channel, which means a local spot, not the resort near Odesa) is not a position,
+        # unless it is a major city or the post names that region.
+        near = set(prefer_oblasts) | {n for o in prefer_oblasts for n in NEIGHBORS.get(o, [])}
+        near |= {r.place.oblast for refs in seg_refs.values() for r in refs if r.place.kind == "R"}
+        if "kyiv" in near or "kyiv_city" in near:
+            near |= {"kyiv", "kyiv_city"}
+        for i, refs in seg_refs.items():
+            seg_refs[i] = [r for r in refs if not (r.role in ("current", "border") and _ukr(r.place.oblast)
+                                                   and r.place.kind not in ("C", "R") and r.place.oblast not in near)]
     msg_threat_list: list[str] = []
     for seg in segments:
         msg_threat_list += [t for t, _, _ in find_threats(seg)]

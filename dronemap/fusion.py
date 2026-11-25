@@ -24,6 +24,9 @@ STALE_AFTER = {"drone": 30, "missile": 15, "kab": 8, "ballistic": 6, "kinzhal": 
 DROP_AFTER = {k: v * 2.5 for k, v in STALE_AFTER.items()}
 # tracks silent for longer than this can no longer change (keeps long replays fast)
 OPEN_HORIZON_MIN = max(DROP_AFTER.values())
+# how much of the flown path the map shows (minutes)
+TRAIL_MIN = {"drone": 90, "jet_shahed": 60, "missile": 25, "kab": 12, "ballistic": 10, "kinzhal": 10,
+             "recon": 120, "lancet": 40, "fpv": 20, "molniya": 30}
 ENDED_VISIBLE_MIN = 10
 EVENT_TTL_MIN = {"explosion": 45, "kill": 30, "threat": 20}
 RU_ZONE_TTL_MIN = 90
@@ -154,6 +157,15 @@ class Track:
         last = self.last
         if last.precision not in ("point", "approx", "region"):
             return None
+        # the cleaned path (no guesses, spikes or impossible jumps), the same one the map draws
+        trail = self.trail(self.last_ts)
+        if len(trail) >= 2:
+            end = trail[-1]
+            for prev in reversed(trail[:-1]):
+                if haversine(prev.lat, prev.lon, end.lat, end.lon) >= 8 and end.ts - prev.ts <= 90 * 60:
+                    return bearing(prev.lat, prev.lon, end.lat, end.lon), end.ts
+            if end is last:
+                return None
         for prev in reversed(self.points[:-1]):
             if prev.precision == "inbound":
                 continue
@@ -191,6 +203,51 @@ class Track:
 
     def heading_estimate(self) -> float | None:
         return self.heading_info()[0]
+
+    def trail(self, now: float) -> list[TrackPoint]:
+        """The flown path for the map: only places the target was actually reported over.
+
+        Estimated spots ("heading to X" puts a guess near X) and region centres never go in: joined
+        up, they draw a web across the map that the target never flew. Positions that this object
+        could not have reached in the time between reports, and out-and-back spikes from a report
+        that was really about another group, are left out. Anchored on the newest report.
+        """
+        fixes = sorted((p for p in self.points if p.precision == "point" and p.ts <= now), key=lambda p: p.ts)
+        if not fixes:
+            return []
+        horizon = fixes[-1].ts - _lookup(TRAIL_MIN, self.threat) * 60     # the path up to its last report
+        fixes = [p for p in fixes if p.ts >= horizon]
+        vmax = THREATS[self.threat]["speed"] * 1.8
+        # 1. positions this object could not have reached in the time between reports
+        kept = [fixes[-1]]
+        for p in reversed(fixes[:-1]):
+            nxt = kept[-1]
+            if haversine(p.lat, p.lon, nxt.lat, nxt.lon) > vmax * max(0.0, nxt.ts - p.ts) / 3600 + 50:
+                continue
+            kept.append(p)
+        kept.reverse()
+        # 2. out-and-back spikes off the line it flew
+        i = 1
+        while i < len(kept) - 1:
+            a, b, c = kept[i - 1], kept[i], kept[i + 1]
+            ab = haversine(a.lat, a.lon, b.lat, b.lon)
+            bc = haversine(b.lat, b.lon, c.lat, c.lon)
+            ac = haversine(a.lat, a.lon, c.lat, c.lon)
+            if min(ab, bc) > 15 and ab + bc > 2.5 * max(ac, 8):
+                del kept[i]
+                i = max(1, i - 1)
+            else:
+                i += 1
+        # 3. the same place reported again, or ping-pong back to a spot it was just at: keep the newest
+        out: list[TrackPoint] = []
+        for p in reversed(kept):
+            if out and haversine(p.lat, p.lon, out[-1].lat, out[-1].lon) < 4:
+                continue
+            if any(haversine(p.lat, p.lon, k.lat, k.lon) < 8 for k in out[-3:-1]):
+                continue
+            out.append(p)
+        out.reverse()
+        return out[-14:]
 
     def add_point(self, p: TrackPoint) -> None:
         if not self.points:
@@ -771,6 +828,8 @@ class Fusion:
                 "dest": dest.as_dict() if dest else None,
                 "origin": t.origin.as_dict() if t.origin else None,
                 "points": [p.as_dict() for p in t.points[-40:]],
+                "trail": [{"lat": round(p.lat, 4), "lon": round(p.lon, 4), "ts": p.ts, "place": p.label}
+                          for p in t.trail(now)],
                 "first_seen": t.first_ts, "last_seen": t.last_ts, "age_s": round(age),
                 "confidence": round(conf, 2), "confirmed": confirmed, "destroyed": t.destroyed,
                 "sources": [{"channel": ch, "tier": tier, "name": self.channels.get(ch, {}).get("name") or "@" + ch}

@@ -446,3 +446,24 @@ def test_newest_first_log_is_read_in_time_order():
     s = one("🪖 ⭕️ шахеди\n◻️ 05:23 ✌️Без загроз\n◻️ 05:15 Транзит в напрямку🧭 м. Кривий Ріг\n◻️ 05:13 Покров\n"
             "◻️ 05:08 Марганець", ["dnipro"])
     assert [label(v) for v in s.via] == ["marhanets"] and label(s.pos) == "pokrov" and label(s.dest) == "kryvyi_rih"
+
+
+def test_regional_channel_positions_stay_in_its_area():
+    r = parse_message("Затока, Интер по курсу", ["dnipro"], "regional")      # Odesa's Zatoka is not over Dnipro
+    assert not r.sightings and not r.bare_places
+    assert label(one("🛵 2 шахеди з Чорного моря на Затоку", ["odesa"]).dest) == "zatoka"
+    assert label(one("Шахеди на Київ", ["dnipro"]).dest) == "kyiv"            # a major city is still fine
+
+
+def test_dnipro_city_areas():
+    r = parse_message("На Чаплі/Приднік", ["dnipro"], "regional")
+    assert [b.place.key for b in r.bare_places] == ["dnipro_chapli", "dnipro_prydniprovsk"]
+    assert label(one("Шахед над Ігренню, курс на Підгороднє", ["dnipro"]).pos) == "dnipro_ihren"
+
+
+def test_dnipro_and_kharkiv_city_areas_are_not_far_away_villages():
+    r = parse_message("Повернув на Рибальськ повз Самарський міст", ["dnipro"], "regional")
+    assert [(b.place.key, b.role) for b in r.bare_places] == [("dnipro_rybalske", "dest"), ("dnipro_samarskyi", "current")]
+    assert label(one("Реактив над Мандриківкою", ["dnipro"]).pos) == "dnipro_mandrykivka"
+    assert label(one("Шахед над ХТЗ", ["kharkiv"]).pos) == "kharkiv_khtz"
+    assert one("Шахед курсом на Самарське", ["dnipro"]).dest.place.name == "Samarske"     # the village still works

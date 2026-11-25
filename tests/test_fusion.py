@@ -426,3 +426,41 @@ def test_region_post_with_destination_behind_does_not_turn_a_track_around():
     seen = next(t for t in snap["tracks"] if t["place"] == "Poltava")
     assert seen["heading_source"] == "track" and 270 <= seen["heading"] <= 320
     assert len(snap["tracks"]) == 2
+
+
+# ------------------------------------------------------------------ trails (the flown path on the map)
+
+def test_trail_uses_only_reported_towns_and_drops_impossible_jumps():
+    from dronemap.fusion import Track, TrackPoint
+    P = lambda m, lat, lon, prec="point", name="x": TrackPoint(T0 + m * 60, lat, lon, prec, name, "poltava", "c")
+    t = Track("t", "shahed", T0, T0 + 40 * 60)
+    t.points = [
+        P(0, 49.80, 34.10, "region", "Poltava region"),           # region centre: never on the trail
+        P(5, 49.46, 35.13, name="Karlivka"),
+        P(12, 49.44, 34.87, name="Mashivka"),
+        P(14, 50.75, 33.47, name="Romny"),                       # 150 km in 2 minutes: another object
+        P(18, 49.62, 34.62, "approx", "approaching Poltava"),     # a guess: never on the trail
+        P(22, 49.59, 34.55, name="Poltava"),
+        P(23, 49.60, 34.56, name="Poltava again"),               # same place reported again
+    ]
+    assert [p.label for p in t.trail(T0 + 25 * 60)] == ["Karlivka", "Mashivka", "Poltava again"]
+
+
+def test_trail_drops_spikes_and_ping_pong_and_keeps_the_path_of_a_quiet_target():
+    from dronemap.fusion import Track, TrackPoint
+    P = lambda m, lat, lon, name: TrackPoint(T0 + m * 60, lat, lon, "point", name, "chernihiv", "c")
+    t = Track("t", "jet_shahed", T0, T0 + 30 * 60)
+    t.points = [P(0, 51.82, 31.95, "Snovsk"), P(3, 51.45, 31.80, "spike far off the line"),
+                P(6, 51.89, 31.60, "Horodnia"), P(8, 51.82, 31.95, "Snovsk again"),
+                P(10, 51.89, 31.60, "Horodnia again")]
+    names = [p.label for p in t.trail(T0 + 10 * 60)]
+    assert "spike far off the line" not in names and len(names) == 2
+    # two hours later the target is long quiet: its trail still shows the path up to the last report
+    assert len(t.trail(T0 + 120 * 60)) == 2
+
+
+def test_snapshot_publishes_the_trail():
+    snap = fuse([(0, "sumyregion", "🛵 3 шахеди повз Білопілля, курс на Ворожбу"),
+                 (5, "inforomen", "Шахеди в районі Ворожби, рухаються на Конотоп"),
+                 (14, "kpszsu", "БпЛА на Сумщині, курсом на Конотоп")], 15)
+    assert [p["place"] for p in snap["tracks"][0]["trail"]] == ["Bilopillia", "Vorozhba"]

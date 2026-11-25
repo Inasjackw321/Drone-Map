@@ -140,6 +140,9 @@ kharkiv; kharkiv; Kharkiv; 49.994; 36.230; C; харків,харков~,хар�
 kharkiv; kharkiv_saltivka; Saltivka (Kharkiv); 50.030; 36.300; D; салтівк~,салтівц~,салтовк~
 kharkiv; kharkiv_kholodna_hora; Kholodna Hora (Kharkiv); 49.990; 36.180; D; /холодн\w*\s+гор\w*
 kharkiv; kharkiv_nemyshlia; Nemyshlia (Kharkiv); 49.980; 36.320; D; немишл~
+kharkiv; kharkiv_khtz; KhTZ (Kharkiv); 49.943; 36.370; D; хтз
+kharkiv; kharkiv_shyshkivka; Shyshkivka (Kharkiv); 50.041; 36.306; D; шишківк~,шишковк~
+kharkiv; kharkiv_nova_bavaria; Nova Bavaria (Kharkiv); 49.945; 36.150; D; /нов\w*\s+баварі\w*,/нов\w*\s+бавари\w*
 kharkiv; kupiansk; Kupiansk; 49.711; 37.616; T; куп'янськ~,купянск~
 kharkiv; izium; Izium; 49.212; 37.256; T; ізюм~,изюм~
 kharkiv; chuhuiv; Chuhuiv; 49.836; 36.689; T; чугуїв,чугуєв~,чугуев~
@@ -194,6 +197,13 @@ poltava; opishnia; Opishnia; 49.958; 34.616; T; опішн~
 poltava; kremenchuk_reservoir; Kremenchuk Reservoir; 49.30; 32.85; W; /кременчуцьк\w*\s+водосховищ\w*,/кременчугск\w*\s+водохранилищ\w*
 # ---------------------------------------------------------------- Dnipropetrovsk region
 dnipro; dnipro; Dnipro; 48.464; 35.046; C; дніпр~,днепр~
+dnipro; dnipro_chapli; Chapli (Dnipro); 48.417; 35.155; D; чаплі,чаплях,чаплям,чаплями,чапли
+dnipro; dnipro_prydniprovsk; Prydniprovsk (Dnipro); 48.413; 35.130; D; придніпровськ~,приднепровск~,приднік~
+dnipro; dnipro_ihren; Ihren (Dnipro); 48.471; 35.195; D; ігрен~,игрен~
+dnipro; dnipro_rybalske; Rybalske (Dnipro); 48.430; 35.110; D; рибальськ~,рыбальск~
+dnipro; dnipro_samarskyi; Samarskyi district (Dnipro); 48.446; 35.130; D; /самарськ\w*\s+(?:міст\w*|район\w*|р-н\w*|масив\w*),/самарск\w*\s+(?:мост\w*|район\w*)
+dnipro; dnipro_nyzhnodniprovsk; Nyzhnodniprovsk (Dnipro); 48.475; 35.117; D; нижньодніпровськ~,нижнеднепровск~,/амур\w*-?\s?нижн\w*
+dnipro; dnipro_mandrykivka; Mandrykivka (Dnipro); 48.438; 35.068; D; мандриківк~,мандриківц~,мандрыковк~
 dnipro; kryvyi_rih; Kryvyi Rih; 47.910; 33.392; C; /крив(?:ий|ого|ому|им)\s+(?:ріг|рогу|розі|рогом),/крив(?:ой|ого|ом)\s+(?:рог|рога|роге),кривбас~
 dnipro; kamianske; Kamianske; 48.512; 34.613; T; кам'янськ~
 dnipro; nikopol; Nikopol; 47.567; 34.395; T; нікопол~,никопол~,нікополь

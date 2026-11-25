@@ -14,9 +14,12 @@ reports into tracks.
 - **Detect, locate, move:** reports from different channels are fused into one target per group. The map
   shows each target as an icon at its estimated current position, pointing the way it flies. Between
   reports it keeps moving in that direction at a typical speed for its type, and glides to the real
-  position when the next report arrives. With **Tracks** on (the default) each target also shows the
-  path it has flown, with arrowheads, a dot per report and a dotted line to where it is heading; turn
-  Tracks off for icons only. Ended targets leave the map.
+  position when the next report arrives. With **Tracks** on (the default) each target also shows its
+  trail: a solid line through the towns it was actually reported over (fading with age, arrowheads
+  showing the way it flew), a dashed link from the last report to where the icon is now, and a short
+  dotted line ahead. Estimated spots and region centres never go into a trail, and positions it could
+  not have reached or out-and-back spikes are left out, so trails don't criss-cross the map. Selecting
+  a target puts the others in the background; turn Tracks off for icons only.
 - **Pinpointing:** a position comes from the most exact thing a post says: a town or village
   ("над Ромнами"), a spot between two towns ("між Ніжином та Носівкою"), a distance and direction
   ("10 км на південь від Полтави"), or a town just passed ("від Близнюків на Юріївку"). When a post

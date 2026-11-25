@@ -417,3 +417,4 @@ a { color: var(--accent); }
 /* legend samples for the track lines */
 .lg-line { display: inline-block; width: 18px; height: 0; border-top: 2.6px solid #ff9f1c; border-radius: 2px; }
 .lg-line.dotted { border-top: 2.6px dotted #ff9f1c; }
+.lg-line.dashed { border-top: 2px dashed #ff9f1c; opacity: .8; }
