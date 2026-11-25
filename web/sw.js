@@ -1,5 +1,5 @@
 /* Drone Map service worker: offline app shell + last known state. */
-const VERSION = 'dm-v6';
+const VERSION = 'dm-v7';
 const SHELL = [
   '/', '/index.html', '/styles.css', '/app.js', '/icons.js', '/basemap.js', '/snapshot.js', '/data/admin.json', '/manifest.webmanifest',
   '/icons/favicon.svg', '/icons/icon-192.png', '/icons/icon-512.png',
@@ -7,7 +7,9 @@ const SHELL = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(VERSION).then(c => Promise.allSettled(SHELL.map(u => c.add(u)))).then(() => self.skipWaiting()));
+  // cache: 'reload' skips the browser's HTTP cache, so an update never stores the previous files again
+  e.waitUntil(caches.open(VERSION).then(c => Promise.allSettled(SHELL.map(u => c.add(new Request(u, { cache: 'reload' })))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
@@ -51,10 +53,14 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // app shell: stale-while-revalidate
+  // app shell: network first, so an update shows on the next load; the saved copy only when offline
   e.respondWith(caches.open(VERSION).then(async c => {
-    const hit = await c.match(e.request, { ignoreSearch: true });
-    const net = fetch(e.request).then(res => { if (res.ok) c.put(e.request, res.clone()); return res; }).catch(() => hit);
-    return hit || net;
+    try {
+      const res = await fetch(e.request, { cache: 'no-cache' });
+      if (res.ok && url.origin === self.location.origin) c.put(e.request, res.clone());
+      return res;
+    } catch {
+      return (await c.match(e.request, { ignoreSearch: true })) || (await c.match('/')) || Response.error();
+    }
   }));
 });

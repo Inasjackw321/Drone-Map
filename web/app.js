@@ -925,7 +925,15 @@
     await deferredInstall.userChoice.catch(() => {});
     deferredInstall = null; $('#installBtn').hidden = true;
   });
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  if ('serviceWorker' in navigator) {
+    // when an updated app takes over (after start.bat pulled a new version), reload once to show it
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hadController && !reloaded) { reloaded = true; location.reload(); }
+    });
+    navigator.serviceWorker.register('/sw.js').then(reg => reg.update()).catch(() => {});
+  }
 
   let toastTimer = null;
   function toast(msg) {

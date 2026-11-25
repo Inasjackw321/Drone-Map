@@ -31,6 +31,16 @@ def create_app(cfg: Config | None = None, on_ready=None) -> FastAPI:
     app.add_middleware(GZipMiddleware, minimum_size=1024)      # map data and state compress ~4x
     app.state.engine = engine
 
+    @app.middleware("http")
+    async def always_fresh_app(request: Request, call_next):
+        """The page, scripts and styles must never be reused from the browser cache without asking:
+        after an update the browser would keep running the old page against the new server. With
+        no-cache it checks the ETag on every load and gets a cheap 304 when nothing changed."""
+        response = await call_next(request)
+        if not request.url.path.startswith("/api/") and "cache-control" not in response.headers:
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
     @app.get("/api/state")
     async def state(request: Request):
         etag = f'W/"{engine.version}-{int(engine.snapshot.get("generated_at", 0)) // 5}"'

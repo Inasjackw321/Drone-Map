@@ -30,6 +30,10 @@ def test_api_and_static_in_demo_mode():
         page = c.get("/")
         assert page.status_code == 200 and "Drone Map" in page.text
         assert c.get("/sw.js").status_code == 200
+        # page files are always revalidated, so an update never leaves the old page running
+        for path in ("/", "/app.js", "/styles.css", "/index.html"):
+            assert c.get(path).headers.get("cache-control") == "no-cache", path
+        assert c.get("/api/state").headers.get("cache-control") == "no-cache"
         assert c.get("/manifest.webmanifest").status_code == 200
         assert c.get("/api/occupied").json()["type"] == "FeatureCollection"
         admin = c.get("/data/admin.json").json()
