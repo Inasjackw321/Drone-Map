@@ -21,6 +21,8 @@ STALE_AFTER = {"drone": 30, "missile": 15, "kab": 8, "ballistic": 6, "kinzhal": 
                "lancet": 25, "fpv": 15, "molniya": 20, "jet_shahed": 20}
 # ...and is removed after this many minutes
 DROP_AFTER = {k: v * 2.5 for k, v in STALE_AFTER.items()}
+# tracks silent for longer than this can no longer change (keeps long replays fast)
+OPEN_HORIZON_MIN = max(DROP_AFTER.values())
 ENDED_VISIBLE_MIN = 10
 EVENT_TTL_MIN = {"explosion": 45, "kill": 30, "threat": 20}
 BANNER_TTL_MIN = 40
@@ -86,6 +88,7 @@ class Track:
     count: int | None = None
     group: bool = False
     dest: PlaceRef | None = None
+    dest_ts: float = 0.0
     origin: PlaceRef | None = None
     heading: float | None = None
     heading_ts: float = 0.0
@@ -103,28 +106,66 @@ class Track:
     def last(self) -> TrackPoint:
         return self.points[-1]
 
-    def heading_estimate(self) -> float | None:
+    def dest_reached(self) -> bool:
+        """The reported destination no longer says where the target is going."""
+        if self.dest is None:
+            return False
         last = self.last
-        if self.dest is not None and haversine(last.lat, last.lon, self.dest.lat, self.dest.lon) > 5:
-            return bearing(last.lat, last.lon, self.dest.lat, self.dest.lon)
-        if self.heading is not None and self.heading_ts >= self.last_ts - 15 * 60:
-            return self.heading
-        pts = [p for p in self.points if p.precision in ("point", "region", "origin")]
-        for prev in reversed(pts[:-1]):
-            if haversine(prev.lat, prev.lon, last.lat, last.lon) > 5:
-                return bearing(prev.lat, prev.lon, last.lat, last.lon)
-        return self.heading
+        seen_since = last.ts > self.dest_ts             # a later report, not the one that named the destination
+        if haversine(last.lat, last.lon, self.dest.lat, self.dest.lon) < (12 if seen_since else 5):
+            return True
+        # "курсом на Чернігівщину" is done once the target is later seen inside that region:
+        # a bearing to the region's centre point would then point anywhere, even backwards.
+        # ("на південь Сумщини" names a part of the region and keeps its own point.)
+        whole_region = self.dest.precision == "region" and self.dest.label == self.dest.place.name
+        return whole_region and seen_since and last.precision == "point" and last.oblast == self.dest.place.oblast
 
-    def speed_estimate(self) -> float | None:
-        pts = [p for p in self.points if p.precision == "point"]
-        if len(pts) < 2:
+    def motion(self) -> tuple[float, float] | None:
+        """(bearing, time) of the flown path: from the last observed fix back to one at least 10 km away.
+
+        A longer baseline than the last hop keeps the direction steady when two channels name
+        neighbouring villages for the same position.
+        """
+        last = self.last
+        if last.precision not in ("point", "region"):
             return None
-        a, b = pts[-2], pts[-1]
-        dt = (b.ts - a.ts) / 3600
-        if dt < 1 / 60:
-            return None
-        v = haversine(a.lat, a.lon, b.lat, b.lon) / dt
-        return v if 20 <= v <= 5000 else None
+        for prev in reversed(self.points[:-1]):
+            if prev.precision == "inbound":
+                continue
+            d = haversine(prev.lat, prev.lon, last.lat, last.lon)
+            need = 10 if prev.precision == "point" and last.precision == "point" else 40
+            if d >= need and last.ts - prev.ts <= 90 * 60:
+                return bearing(prev.lat, prev.lon, last.lat, last.lon), last.ts
+        return None
+
+    def heading_info(self) -> tuple[float | None, str | None]:
+        """Where the target is going and why we think so: 'dest', 'reported' or 'track'.
+
+        The newest report of intent wins (a destination or a course like "курс північно-західний").
+        If the target has since been seen moving clearly the other way, the flown path wins,
+        so an icon never keeps pointing back at a place the target already passed.
+        """
+        last = self.last
+        cands: list[tuple[float, int, float, str]] = []      # ts, priority, heading, source
+        if self.dest is not None and not self.dest_reached() and \
+                haversine(last.lat, last.lon, self.dest.lat, self.dest.lon) > 5:
+            cands.append((self.dest_ts, 1, bearing(last.lat, last.lon, self.dest.lat, self.dest.lon), "dest"))
+        if self.heading is not None and self.heading_ts >= self.last_ts - 20 * 60:
+            cands.append((self.heading_ts, 0, self.heading, "reported"))
+        mot = self.motion()
+        pick = max(cands) if cands else None
+        if mot is not None:
+            m_hdg, m_ts = mot
+            if pick is None or (m_ts > pick[0] + 30 and angle_diff(m_hdg, pick[2]) > 100):
+                return m_hdg, "track"
+        if pick is not None:
+            return pick[2], pick[3]
+        if self.origin is not None and haversine(self.origin.lat, self.origin.lon, last.lat, last.lon) > 30:
+            return bearing(self.origin.lat, self.origin.lon, last.lat, last.lon), "track"
+        return None, None
+
+    def heading_estimate(self) -> float | None:
+        return self.heading_info()[0]
 
     def add_point(self, p: TrackPoint) -> None:
         if not self.points:
@@ -149,6 +190,8 @@ class Fusion:
         self.channels = channels
         self.weights = weights or DEFAULT_WEIGHTS
         self.tracks: list[Track] = []
+        self._open: list[Track] = []          # tracks that can still receive reports
+        self._pruned_at = 0.0
         self.events: list[dict] = []
         self.alerts: dict[str, dict] = {}
         self.banners: list[dict] = []
@@ -163,8 +206,14 @@ class Fusion:
     def _tid(channel: str, msg_id: int, idx: int, threat: str) -> str:
         return hashlib.sha1(f"{channel}/{msg_id}/{idx}/{threat}".encode()).hexdigest()[:10]
 
+    def _prune(self, ts: float) -> None:
+        if ts - self._pruned_at < 300:
+            return
+        self._pruned_at = ts
+        self._open = [t for t in self._open if t.ended is None and ts - t.last_ts <= OPEN_HORIZON_MIN * 60]
+
     def _active(self, ts: float):
-        for t in self.tracks:
+        for t in self._open:
             window = _lookup(ASSOC_WINDOW, t.threat)
             if t.points and t.last.precision in ("origin", "inbound"):
                 window = min(window, 20)        # a launch area or a bare "heading to X" goes cold quickly
@@ -210,6 +259,11 @@ class Fusion:
             # a missile group reported heading somewhere else is a different group
             if angle_diff(hdg, bearing(pos.lat, pos.lon, s.dest.lat, s.dest.lon)) > 100:
                 return None
+        if s.dest is not None and hdg is not None and pos.precision != "point" and last.precision == "point":
+            # a region-wide post ("Миколаївщина: реактивний на Баштанку") whose destination lies behind a
+            # target we have seen at a town is about another object; it must not turn this one around
+            if angle_diff(hdg, bearing(last.lat, last.lon, s.dest.lat, s.dest.lon)) > 100:
+                return None
         if t.dest is not None and haversine(pos.lat, pos.lon, t.dest.lat, t.dest.lon) < 30:
             cost -= 0.3
         if s.dest is not None and t.dest is not None and haversine(s.dest.lat, s.dest.lon, t.dest.lat, t.dest.lon) < 30:
@@ -237,6 +291,7 @@ class Fusion:
         return 0.5 + ang / 180 + comp
 
     def _apply(self, t: Track, s: Sighting, ref: MsgRef, pos: TrackPoint | None, via: list[TrackPoint]) -> None:
+        before = t.points[-1] if t.points else None
         for v in via:
             t.add_point(v)
         if pos is not None:
@@ -249,15 +304,38 @@ class Fusion:
             t.count = s.count
         t.group = t.group or s.group
         if s.dest is not None:
-            t.dest = s.dest
-        elif t.dest is not None and haversine(t.last.lat, t.last.lon, t.dest.lat, t.dest.lon) < 12:
-            t.dest = None                       # arrived
+            t.dest, t.dest_ts = s.dest, ref.ts
+        elif t.dest is not None and (t.dest_reached() or self._passed_dest(t, before)):
+            t.dest = None
         if s.heading is not None:
             t.heading, t.heading_ts = s.heading, ref.ts
         if s.origin is not None and t.origin is None:
             t.origin = s.origin
         t.sources.setdefault(ref.channel, ref.tier)
         t.refs.append(ref)
+
+    @staticmethod
+    def _passed_dest(t: Track, before: TrackPoint | None) -> bool:
+        """The newest fix moved away from the reported destination: it was passed or the target turned."""
+        last = t.last
+        if before is None or before is last or before.precision != "point" or last.precision != "point":
+            return False
+        if haversine(before.lat, before.lon, last.lat, last.lon) < 8:
+            return False
+        moved = bearing(before.lat, before.lon, last.lat, last.lon)
+        to_dest = bearing(last.lat, last.lon, t.dest.lat, t.dest.lon)
+        return angle_diff(moved, to_dest) > 110
+
+    @staticmethod
+    def _same_new(t: Track, s: Sighting, pos: PlaceRef | None, ts: float) -> bool:
+        """A "new target" post may only join a track that started minutes ago from the same news
+        (the post repeated, or reposted by another channel), never an older track."""
+        if ts - t.first_ts > 15 * 60:
+            return False
+        if s.dest is not None and t.dest is not None and haversine(s.dest.lat, s.dest.lon, t.dest.lat, t.dest.lon) < 35:
+            return True
+        return pos is not None and pos.precision == "point" and t.last.precision == "point" and \
+            haversine(pos.lat, pos.lon, t.last.lat, t.last.lon) < 25
 
     def on_sighting(self, s: Sighting, ref: MsgRef, idx: int, used: set[str]) -> None:
         ts = ref.ts
@@ -271,6 +349,8 @@ class Fusion:
         best, best_cost = None, None
         for t in self._active(ts):
             if t.id in used:
+                continue
+            if s.new and not self._same_new(t, s, pos_ref, ts):
                 continue
             if pos_ref is not None:
                 c = self._cost(t, s, pos_ref, ts)
@@ -286,6 +366,7 @@ class Fusion:
                 pos = self._point(s.dest, ts, ref.channel, "inbound")
             t = Track(self._tid(ref.channel, ref.msg_id, idx, s.threat), s.threat, ts, ts)
             self.tracks.append(t)
+            self._open.append(t)
             best = t
         used.add(best.id)
         self._apply(best, s, ref, pos, via)
@@ -318,7 +399,7 @@ class Fusion:
             best.ended, best.ended_ts = "destroyed", ref.ts
 
     def on_all_clear(self, oblasts: set[str], ref: MsgRef) -> None:
-        for t in self.tracks:
+        for t in self._open:
             if t.ended is None and t.last.oblast in oblasts and ref.ts - t.last_ts > 60 and ref.ts >= t.last_ts:
                 t.ended, t.ended_ts = "all clear", ref.ts
 
@@ -332,7 +413,8 @@ class Fusion:
                 e["last_ts"] = ref.ts
                 return
         self.events.append({
-            "kind": kind, "threat": ev.threat, "key": p.place.key, "place": p.label, "lat": round(p.lat, 4),
+            "kind": kind, "threat": ev.threat, "key": p.place.key, "place": p.label, "oblast": p.place.oblast,
+            "lat": round(p.lat, 4),
             "lon": round(p.lon, 4), "precision": p.precision, "ts": ref.ts, "last_ts": ref.ts,
             "sources": {ref.channel: ref.tier}, "text": ev.text[:200],
         })
@@ -340,7 +422,7 @@ class Fusion:
     # ------------------------------------------------------------------ main loop
     def on_clear(self, parsed: ParsedMessage, ref: MsgRef) -> None:
         """'Кременчук чисто' / 'в області чисто': end tracks there (alerts stay as they are)."""
-        for t in self.tracks:
+        for t in self._open:
             if t.ended is not None or ref.ts < t.last_ts + 60:
                 continue
             last = t.last
@@ -354,6 +436,7 @@ class Fusion:
                 t.ended, t.ended_ts = "reported clear", ref.ts
 
     def process(self, ref: MsgRef, parsed: ParsedMessage) -> None:
+        self._prune(ref.ts)
         used: set[str] = set()
         sightings = list(parsed.sightings)
         # terse follow-up ("Гостомель") continues what this channel reported a few minutes ago
@@ -362,7 +445,7 @@ class Fusion:
             cur = [r for r in parsed.bare_places if r.role == "current"]
             dst = [r for r in parsed.bare_places if r.role == "dest"]
             sightings.append(Sighting(last[0], pos=cur[-1] if cur else None, dest=dst[0] if dst else None,
-                                      text=ref.text, own_threat=False))
+                                      text=ref.text, own_threat=False, new=parsed.bare_new))
         for i, s in enumerate(sightings):
             self.on_sighting(s, ref, i, used)
         if parsed.sightings:
@@ -444,16 +527,16 @@ class Fusion:
                 status = "active"
             conf, confirmed = self.confidence(t)
             last = t.last
-            hdg = t.heading_estimate()
+            hdg, hdg_src = t.heading_info()
+            dest = t.dest if t.dest is not None and not t.dest_reached() else None
             tracks_out.append({
                 "id": t.id, "threat": t.threat, "family": t.family, "label": THREATS[t.threat]["label"],
                 "count": t.count, "group": t.group, "status": status, "ended": t.ended,
                 "lat": round(last.lat, 4), "lon": round(last.lon, 4), "precision": last.precision,
                 "place": last.label, "oblast": last.oblast,
                 "heading": round(hdg, 1) if hdg is not None else None,
-                "speed_kmh": round(t.speed_estimate()) if t.speed_estimate() else None,
-                "nominal_speed_kmh": THREATS[t.threat]["speed"],
-                "dest": t.dest.as_dict() if t.dest else None,
+                "heading_source": hdg_src,
+                "dest": dest.as_dict() if dest else None,
                 "origin": t.origin.as_dict() if t.origin else None,
                 "points": [p.as_dict() for p in t.points[-40:]],
                 "first_seen": t.first_ts, "last_seen": t.last_ts, "age_s": round(age),
@@ -492,8 +575,46 @@ class Fusion:
         }
 
 
-def run_fusion(items: list[tuple[MsgRef, ParsedMessage]], channels: dict, weights: dict | None, now: float) -> dict:
+    # ------------------------------------------------------------------ history (heatmap)
+    def heat_points(self) -> list[dict]:
+        """Observed positions for the long-term heatmap.
+
+        Only real fixes count (a named village or town). Region centre points would paint false hot
+        spots in the middle of every oblast. For missiles and guided bombs, the reported target of a
+        not-yet-seen inbound weapon counts at a lower weight, since that is often all a post says.
+        Each row has a stable key, so recording the same report again only updates it.
+        """
+        out: list[dict] = []
+        for t in self.tracks:
+            conf, confirmed = self.confidence(t)
+            n = min(t.count or 1, 6)
+            for p in t.points:
+                if p.precision == "point":
+                    w = float(n)
+                elif p.precision == "inbound" and t.family in ("missile", "kab"):
+                    w = 0.6 * n
+                else:
+                    continue
+                out.append({"key": f"{t.family}|{int(p.ts)}|{p.lat:.3f}|{p.lon:.3f}", "kind": "track",
+                            "family": t.family, "threat": t.threat, "ts": p.ts, "lat": p.lat, "lon": p.lon,
+                            "place": p.label, "oblast": p.oblast, "weight": w, "confirmed": int(confirmed)})
+        for e in self.events:
+            if e["kind"] != "explosion" or e["precision"] != "point":
+                continue
+            confirmed = any(tier != "aggregator" for tier in e["sources"].values())
+            out.append({"key": f"explosion|{int(e['ts'])}|{e['key']}", "kind": "explosion",
+                        "family": THREATS[e["threat"]]["family"] if e.get("threat") else "unknown",
+                        "threat": e.get("threat") or "", "ts": e["ts"], "lat": e["lat"], "lon": e["lon"],
+                        "place": e["place"], "oblast": e["oblast"], "weight": 1.0, "confirmed": int(confirmed)})
+        return out
+
+
+def build_fusion(items: list[tuple[MsgRef, ParsedMessage]], channels: dict, weights: dict | None) -> Fusion:
     fusion = Fusion(channels, weights)
     for ref, parsed in sorted(items, key=lambda it: (it[0].ts, it[0].channel, it[0].msg_id)):
         fusion.process(ref, parsed)
-    return fusion.snapshot(now)
+    return fusion
+
+
+def run_fusion(items: list[tuple[MsgRef, ParsedMessage]], channels: dict, weights: dict | None, now: float) -> dict:
+    return build_fusion(items, channels, weights).snapshot(now)

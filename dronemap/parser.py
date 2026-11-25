@@ -129,6 +129,14 @@ COUNT_BEFORE = re.compile(
     r"(?:ударн\w*|реактивн\w*|ворож\w*|крилат\w*|балістичн\w*|розвідувальн\w*|групи|групп\w*)?\s*$")
 COUNT_AFTER = re.compile(r"^\w*\s*(?:[хx×]\s*(?P<a>\d{1,3})(?!\d)|\((?P<b>\d{1,3})\)|[-–]\s*(?P<c>\d{1,3})\s*(?:шт|од)\b)")
 GROUP_RE = re.compile(_W + r"(?:груп\w*|кілька|декілька|несколько|рій|зграя)")
+# "новий реактивний БпЛА", "+1 шахед", "ще 2 шахеди", "ещё один": a new object, not the one already tracked.
+# Only right before a threat word (or at the start of a line), so "Новий Буг" or "Нова Каховка" do not count.
+NEW_WORD = r"(?:нов(?:ий|а|і|е|их|ого|ый|ая|ые)|ще\s+(?:один|одна|одне|\d{1,2}|кілька|декілька|пара|пару)|" \
+           r"еще\s+(?:один|одна|одно|\d{1,2}|несколько|пара|пару)|\+\s?\d{1,2})"
+NEW_BEFORE = re.compile(r"(?:(?<![\w'])" + NEW_WORD + r"|\+)\s*(?:[хx×]\s*)?(?:ударн\w*\s+|ворож\w*\s+)?$")
+NEW_START = re.compile(r"^\W{0,3}" + NEW_WORD + r"(?![\w'])")
+# a region header on its own line: "Житомирщина:\nРеактивний БпЛА курсом на Овруч"
+HEADER_LINE = re.compile(r"(?m)^([^\n:]{3,40}):[ \t]*\n+(?=[^\n])")
 
 
 def dir_to_deg(word: str) -> float | None:
@@ -187,6 +195,7 @@ class Sighting:
     heading: float | None = None
     text: str = ""
     own_threat: bool = True
+    new: bool = False      # "новий шахед", "+1 реактивний", "ще один": another object, not an update
 
 
 @dataclass
@@ -211,6 +220,7 @@ class ParsedMessage:
     clear_places: list[PlaceRef] = field(default_factory=list)
     clear_oblasts: set[str] = field(default_factory=set)
     bare_places: list[PlaceRef] = field(default_factory=list)
+    bare_new: bool = False         # the follow-up is about another object ("Ще один з Херсонщини ...")
 
     @property
     def relevant(self) -> bool:
@@ -335,7 +345,7 @@ def classify_place(seg: str, start: int, end: int, place: Place, prev_end: int |
     if offset_dest or DEST_CUE.search(prefix):
         role = "dest"
     elif BORDER_CUE.search(prefix):
-        role = "current"
+        role = "border"                    # "уздовж кордону з Білоруссю": near that border, not inside the country
     elif ORIGIN_CUE.search(prefix):
         role = "origin"
     elif NA_CUE.search(prefix):
@@ -414,6 +424,27 @@ def _ukr(oblast: str) -> bool:
     return not oblast.startswith(("ru_", "sea"))
 
 
+LOG_LINE = re.compile(r"^\W*(\d{1,2})[:.](\d{2})(?!\d)")
+
+
+def chronological(text: str) -> str:
+    """Put a newest-first log ("◻️ 23:48 Транзит на Запоріжжя / ◻️ 23:44 с. Настасівка / ...") in time order,
+    so the route reads from where the target was to where it went."""
+    lines = text.split("\n")
+    stamped = [(i, int(m.group(1)) * 60 + int(m.group(2))) for i, line in enumerate(lines)
+               if (m := LOG_LINE.match(line)) and int(m.group(1)) < 24]
+    if len(stamped) < 3:
+        return text
+    times = [t for _, t in stamped]
+    newest_first = times[0] != times[-1] and all((a - b) % 1440 < 720 for a, b in zip(times, times[1:]))
+    if not newest_first:
+        return text
+    pos = [i for i, _ in stamped]
+    for i, line in zip(pos, [lines[i] for i in reversed(pos)]):
+        lines[i] = line
+    return "\n".join(lines)
+
+
 # --------------------------------------------------------------------------- main entry
 
 def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str = "regional") -> ParsedMessage:
@@ -421,13 +452,14 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
     if not text or not text.strip():
         return res
     prefer_oblasts = list(prefer_oblasts)
+    text = chronological(text)
     norm = normalize(text)
     if len(norm) > 1200 or SUMMARY_RE.search(norm):
         res.summary = True
         res.threats = best_by_family([t for t, _, _ in find_threats(norm)])
         return res
 
-    segments = split_segments(norm)
+    segments = split_segments(HEADER_LINE.sub(lambda m: m.group(1) + ": " if GAZETTEER.find(m.group(1)) else m.group(0), norm))
     # regions named anywhere in the message help resolve village names ("на Харківщині ... на Савинці")
     named = [GAZETTEER.resolve(m, prefer_oblasts).oblast for seg in segments for m in GAZETTEER.find(seg)]
     village_prefer = list(dict.fromkeys(list(prefer_oblasts) + [o for o in named if not o.startswith(("ru_", "sea"))]))
@@ -527,6 +559,8 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
                 continue
 
         current = [r for r in refs if r.role == "current"]
+        if not current:
+            current = [r for r in refs if r.role == "border" and _ukr(r.place.oblast)]
         dests = [r for r in refs if r.role == "dest"]
         origins = [r for r in refs if r.role == "origin"]
 
@@ -578,6 +612,7 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
             continue
 
         count, group = extract_count(seg, tspans)
+        is_new = bool(NEW_START.search(seg)) or any(NEW_BEFORE.search(seg[max(0, s - 25):s]) for _, s, _ in tspans)
         point_current = [r for r in current if r.precision == "point"]
         dest = dests[0] if dests else None
         origin = origins[0] if origins else None
@@ -590,14 +625,16 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
         if not point_current and len(current) > 1:
             for r in current:
                 for th in threats_here:
-                    res.sightings.append(Sighting(th, count, group, r, [], dest, origin, heading, seg, bool(seg_threats)))
+                    res.sightings.append(Sighting(th, count, group, r, [], dest, origin, heading, seg, bool(seg_threats),
+                                                  is_new))
             continue
 
         # a bare list of towns is several targets; "повз A, B" is one target's path
         if len(point_current) > 1 and not PATH_CUE.search(seg):
             for r in point_current:
                 for th in threats_here:
-                    res.sightings.append(Sighting(th, count, group, r, [], dest, origin, heading, seg, bool(seg_threats)))
+                    res.sightings.append(Sighting(th, count, group, r, [], dest, origin, heading, seg, bool(seg_threats),
+                                                  is_new))
             continue
 
         if point_current:
@@ -609,7 +646,7 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
 
         # continuation line: no own threat word, fills an empty slot of the previous sighting
         prev = res.sightings[-1] if res.sightings else None
-        if prev is not None and not seg_threats and count is None:
+        if prev is not None and not seg_threats and count is None and not is_new:
             filled = False
             if dest and prev.dest is None and pos is None:
                 prev.dest = dest
@@ -632,7 +669,7 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
         for th in threats_here:
             res.sightings.append(Sighting(
                 threat=th, count=count, group=group, pos=pos, via=list(via), dest=dest, origin=origin,
-                heading=heading, text=seg, own_threat=bool(seg_threats)))
+                heading=heading, text=seg, own_threat=bool(seg_threats), new=is_new))
 
     if pending_banners and not res.sightings and not res.events:
         res.banners += pending_banners[:1]
@@ -640,4 +677,5 @@ def parse_message(text: str, prefer_oblasts: list[str] | tuple = (), tier: str =
     # channel's previous report
     if not msg_threats and not res.relevant and all_refs and len(norm) <= 80:
         res.bare_places = all_refs
+        res.bare_new = any(NEW_START.search(seg) for seg in segments)
     return res

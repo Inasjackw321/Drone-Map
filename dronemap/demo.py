@@ -6,6 +6,7 @@ loaded as history; the rest arrive in real time. The scenario then loops.
 from __future__ import annotations
 
 import asyncio
+import random
 import time
 
 from .store import RawMessage, Store
@@ -131,6 +132,30 @@ SCRIPT: list[tuple[float, str, str]] = [
                     "Станом на 08:30 збито/подавлено 65 БпЛА на півночі, сході та півдні країни."),
 ]
 SCENARIO_LEN_MIN = max(t for t, _, _ in SCRIPT) + 12
+
+
+def demo_history(channels: dict, weights: dict | None, days: int = 28, seed: int = 7) -> list[dict]:
+    """Heatmap history for demo mode: the scripted night replayed on earlier nights.
+
+    Each night keeps a random share of the posts, so nights differ in size and the map shows
+    hot and cooler areas. Only used with --demo.
+    """
+    from .fusion import MsgRef, build_fusion
+    from .parser import parse_message
+
+    rng = random.Random(seed)
+    now = time.time()
+    items = []
+    for k in range(1, days + 1):
+        base = now - k * 86400 + rng.uniform(1.5, 6) * 3600
+        keep = rng.uniform(0.35, 0.95)
+        for idx, (t, ch, text) in enumerate(SCRIPT):
+            meta = channels.get(ch)
+            if meta is None or rng.random() > keep:
+                continue
+            ref = MsgRef(ch, k * 10000 + idx, base + t * 60, meta.get("tier", "aggregator"), text)
+            items.append((ref, parse_message(text, meta.get("regions", []), ref.tier)))
+    return build_fusion(items, channels, weights).heat_points()
 
 
 class DemoSource:

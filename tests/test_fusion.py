@@ -168,3 +168,138 @@ def test_clear_report_ends_nearby_track():
 def test_generic_missile_does_not_ride_ballistic_speed():
     snap = fuse([(0, "kpszsu", "Балістика на Київ"), (3, "kpszsu", "Ракета над Львовом")], 4)
     assert len(snap["tracks"]) == 2
+
+
+# ---------------------------------------------------------------- direction
+
+
+def test_passed_destination_no_longer_steers_the_heading():
+    # reported heading for Mashivka, then seen over Poltava, which is beyond it: it flew past
+    snap = fuse([
+        (0, "PoltavaRadar", "Шахед над Карлівкою, курс на Машівку"),
+        (10, "PoltavaRadar", "Шахед над Полтавою"),
+    ], 11)
+    t = snap["tracks"][0]
+    assert places(t) == ["Karlivka", "Poltava"]
+    assert t["dest"] is None
+    assert t["heading_source"] == "track"
+    assert 270 <= t["heading"] <= 320                         # still flying west-north-west, not back to Mashivka
+
+
+def test_region_destination_is_done_once_inside_the_region():
+    CH["RadarChernihiv"] = {"tier": "regional", "regions": ["chernihiv"]}
+    snap = fuse([
+        (0, "kpszsu", "БпЛА на півночі Сумщини, курсом на Чернігівщину."),
+        (12, "RadarChernihiv", "Шахеди над Бахмачем"),
+    ], 13)
+    t = snap["tracks"][0]
+    assert t["place"] == "Bakhmach" and t["dest"] is None
+    assert t["heading_source"] == "track" and 240 <= t["heading"] <= 330
+
+
+def test_newer_reported_course_wins_over_older_destination():
+    snap = fuse([
+        (0, "PoltavaRadar", "Шахед над Полтавою, курс на Решетилівку"),
+        (5, "PoltavaRadar", "Шахед над Полтавою, курс північний"),
+    ], 6)
+    t = snap["tracks"][0]
+    assert t["heading"] == 0 and t["heading_source"] == "reported"
+
+
+def test_destination_named_in_the_same_post_is_kept_even_when_close():
+    CH["kherson_non_drone"] = {"tier": "regional", "regions": ["kherson"]}
+    snap = fuse([(0, "kherson_non_drone", "Молнія над Антонівкою, курс на Херсон")], 1)
+    t = snap["tracks"][0]
+    assert t["dest"]["name"] == "Kherson" and t["heading_source"] == "dest"
+
+
+def test_no_speed_is_published():
+    snap = fuse([(0, "PoltavaRadar", "Шахед над Карлівкою, курс на Полтаву"),
+                 (8, "PoltavaRadar", "Шахед над Машівкою, курс на Полтаву")], 9)
+    assert not any("speed" in k for t in snap["tracks"] for k in t)
+
+
+def test_heading_follows_reports_in_the_demo_night():
+    """Every moving track in the scripted night points within 90° of its last flown leg."""
+    from dronemap.gazetteer import angle_diff, bearing, haversine
+    e = Engine(Config(mode="demo"))
+    e.store.upsert([RawMessage(ch, 1000 + i, T0 + t * 60, text) for i, (t, ch, text) in enumerate(SCRIPT) if t <= 45])
+    snap = e.rebuild(now=T0 + 45 * 60)
+    checked = 0
+    for t in snap["tracks"]:
+        pts = [p for p in t["points"] if p["precision"] == "point"]
+        if t["status"] != "active" or t["heading"] is None or len(pts) < 2:
+            continue
+        a, b = pts[-2], pts[-1]
+        if haversine(a["lat"], a["lon"], b["lat"], b["lon"]) < 10:
+            continue
+        assert angle_diff(bearing(a["lat"], a["lon"], b["lat"], b["lon"]), t["heading"]) < 90, t["place"]
+        checked += 1
+    assert checked >= 4
+
+
+# ---------------------------------------------------------------- heatmap history
+
+
+def test_heat_points_skip_region_centres_and_dedupe():
+    items = []
+    for i, (t, ch, text) in enumerate([
+        (0, "kpszsu", "БпЛА на Сумщині"),                                   # region only: no heat
+        (1, "sumyregion", "🛵 3 шахеди повз Білопілля, курс на Ворожбу"),
+        (5, "inforomen", "Шахеди в районі Ворожби, рухаються на Конотоп"),
+    ]):
+        meta = CH[ch]
+        items.append((MsgRef(ch, i + 1, T0 + t * 60, meta["tier"], text), parse_message(text, meta["regions"], meta["tier"])))
+    from dronemap.fusion import build_fusion
+    rows = build_fusion(items, CH, None).heat_points()
+    assert sorted(r["place"] for r in rows) == ["Bilopillia", "Vorozhba"]
+    assert all(r["weight"] == 3 and r["confirmed"] for r in rows)
+    e = Engine(Config(mode="demo"))
+    e.store.add_heat(rows)
+    e.store.add_heat(rows)                                   # recording the same reports again adds nothing
+    assert len(e.store.heat_since(0)) == 2
+
+
+def test_heatmap_view_periods_and_kinds():
+    from dronemap.demo import demo_history
+    e = Engine(Config(mode="demo"))
+    e.store.add_heat(demo_history(e.by_handle, e.weights, days=28))
+    day, week, month = (e.heatmap_view(h, "all", -120) for h in (24, 7 * 24, 28 * 24))
+    assert 0 < day["observations"] < week["observations"] < month["observations"]
+    assert len(day["series"]) in (24, 25) and day["step"] == 3600
+    assert len(week["series"]) in (7, 8) and month["step"] == 86400
+    assert not month["partial"]
+    assert {s for row in month["series"] for s in row if s != "t"} <= {"drone", "missile", "kab"}
+    missiles = e.heatmap_view(28 * 24, "missile")
+    assert missiles["observations"] and all(b["threat"] in ("cruise", "ballistic", "missile", "kinzhal")
+                                            for b in missiles["by_threat"])
+    drones = e.heatmap_view(28 * 24, "drone")
+    assert {"shahed", "gerbera", "recon"} <= {b["threat"] for b in drones["by_threat"]}
+    assert drones["observations"] + missiles["observations"] + e.heatmap_view(28 * 24, "kab")["observations"] \
+        == month["observations"]
+    assert e.heatmap_view(28 * 24, "explosion")["observations"] > 0
+
+
+def test_new_target_post_starts_its_own_track():
+    snap = fuse([
+        (0, "PoltavaRadar", "Шахед над Карлівкою, курс на Полтаву"),
+        (16, "kpszsu", "+1 шахед курсом на Полтаву"),
+    ], 17)
+    assert len(snap["tracks"]) == 2
+    # the same news repeated a few minutes later (or by another channel) is still one target
+    snap = fuse([
+        (0, "PoltavaRadar", "+1 шахед курсом на Полтаву"),
+        (3, "totallzrada", "+1 шахед курсом на Полтаву"),
+    ], 4)
+    assert len(snap["tracks"]) == 1
+
+
+def test_region_post_with_destination_behind_does_not_turn_a_track_around():
+    snap = fuse([
+        (0, "PoltavaRadar", "Шахед над Карлівкою, курс на Машівку"),
+        (10, "PoltavaRadar", "Шахед над Полтавою"),
+        (12, "kpszsu", "БпЛА на Полтавщині, курсом на Карлівку"),
+    ], 13)
+    seen = next(t for t in snap["tracks"] if t["place"] == "Poltava")
+    assert seen["heading_source"] == "track" and 270 <= seen["heading"] <= 320
+    assert len(snap["tracks"]) == 2
