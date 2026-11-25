@@ -19,6 +19,7 @@
     selected: null, tab: 'targets',
     hidden: new Set(prefs.get('hidden', [])),
     showUnconfirmed: prefs.get('showUnconfirmed', true),
+    showTracks: prefs.get('showTracks', true),
     showAlerts: prefs.get('alertsOn', true),
     showOccupied: prefs.get('showOccupied', true),
     showRussia: prefs.get('showRussia', true),
@@ -97,6 +98,63 @@
   const LOOKAHEAD_KM = { shahed: 40, uav: 40, gerbera: 40, jet_shahed: 70, recon: 20, lancet: 12, molniya: 12, fpv: 8,
     cruise: 120, missile: 120, ballistic: 150, kinzhal: 150, kab: 25 };
   const lookahead = t => LOOKAHEAD_KM[t.threat] || 40;
+
+  // ---------------------------------------------------------------- tracks: flown path and course
+  // Angle on screen (clockwise from up) from a to b. Web Mercator keeps angles, so this does not
+  // depend on the zoom level, and an arrowhead lines up with the leg it sits on.
+  function screenAngle(a, b) {
+    const pa = map.project(L.latLng(a[0], a[1]), 8), pb = map.project(L.latLng(b[0], b[1]), 8);
+    return (toDeg(Math.atan2(pb.x - pa.x, pa.y - pb.y)) + 360) % 360;
+  }
+  function arrowIcon(c, deg, faded) {
+    return L.divIcon({ className: '', iconSize: [12, 12], iconAnchor: [6, 6],
+      html: `<svg class="trk-arrow" viewBox="0 0 12 12" width="12" height="12" style="transform:rotate(${deg}deg);opacity:${faded ? 0.4 : 0.95}"><path d="M6 1.5 L10.5 10 L6 7.6 L1.5 10 Z" fill="${c}" stroke="#0b0e12" stroke-width="1" stroke-linejoin="round"/></svg>` });
+  }
+  // where the dotted course line points: the reported destination town while that is still the
+  // course, otherwise a point ahead on the heading (a region as destination only gives a direction)
+  function aimPoint(t) {
+    if (t.precision === 'inbound') return null;
+    if (t.dest && t.heading_source === 'dest' && t.dest.precision === 'point') return [t.dest.lat, t.dest.lon];
+    if (t.heading != null) return project(t.lat, t.lon, t.heading, lookahead(t));
+    return null;
+  }
+  // Solid legs between reported towns (with an arrowhead showing which way it flew), faint dashed
+  // legs to or from region-wide or estimated positions, a dot per report, and a dotted line on to
+  // where it is heading. The icon itself moves on ahead of the last report along that dotted line.
+  function drawTrackPath(t) {
+    const c = info(t.threat).color, sel = S.selected === t.id;
+    const faded = t.status !== 'active' || !t.confirmed;
+    const pts = t.points.filter(p => p.precision !== 'inbound');
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i];
+      const exact = a.precision === 'point' && b.precision === 'point';
+      L.polyline([[a.lat, a.lon], [b.lat, b.lon]], exact
+        ? { color: c, weight: sel ? 4 : 2.6, opacity: faded ? 0.35 : 0.9, lineCap: 'round', dashArray: t.confirmed ? null : '6 7', interactive: false }
+        : { color: c, weight: 2, opacity: faded ? 0.2 : 0.45, dashArray: '3 8', interactive: false }).addTo(layers.tracks);
+      if (exact && distKm(a, b) >= 8) {
+        L.marker([(a.lat + b.lat) / 2, (a.lon + b.lon) / 2], { icon: arrowIcon(c, screenAngle([a.lat, a.lon], [b.lat, b.lon]), faded), interactive: false, keyboard: false })
+          .addTo(layers.tracks);
+      }
+    }
+    pts.slice(0, -1).forEach(p => {
+      if (p.precision !== 'point') return;
+      L.circleMarker([p.lat, p.lon], { radius: sel ? 4 : 3, color: '#0b0e12', weight: 1, fillColor: c, fillOpacity: faded ? 0.35 : 0.95 })
+        .bindTooltip(`${esc(p.place)} · ${clock(p.ts)}`, { className: 'dm-tip', direction: 'top' })
+        .on('click', () => select(t.id, false))
+        .addTo(layers.tracks);
+    });
+    if (t.status !== 'active') return;
+    const aim = aimPoint(t);
+    if (aim) {
+      L.polyline([[t.lat, t.lon], aim], { color: c, weight: sel ? 3 : 2, opacity: faded ? 0.3 : 0.75, dashArray: '1 7', lineCap: 'round', interactive: false })
+        .addTo(layers.tracks);
+    }
+    if (t.dest && t.heading_source === 'dest' && t.dest.precision === 'point') {
+      L.circleMarker([t.dest.lat, t.dest.lon], { radius: 5, color: c, weight: 2, dashArray: '2 3', fill: false, opacity: faded ? 0.4 : 0.9, interactive: !sel })
+        .bindTooltip(`→ ${esc(t.dest.name)}`, { permanent: sel, className: 'dest-label', direction: 'right', offset: [7, 0] })
+        .addTo(layers.tracks);
+    }
+  }
   function bearing(a, b) {
     const p1 = toRad(a.lat), p2 = toRad(b.lat), dl = toRad(b.lon - a.lon);
     const x = Math.sin(dl) * Math.cos(p2), y = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
@@ -250,9 +308,10 @@
   }
 
   function renderMap() {
-    layers.events.clearLayers(); layers.areas.clearLayers();
+    layers.events.clearLayers(); layers.areas.clearLayers(); layers.tracks.clearLayers();
     if (!S.state) return;
     for (const e of S.state.events) drawEvent(e);
+    for (const t of mapTracks()) if (S.showTracks || S.selected === t.id) drawTrackPath(t);
     renderTracks();
     DMBase.setAlerts(S.state.alerts);
     DMBase.setRuZones(S.state.ru_zones);
@@ -334,6 +393,10 @@
     const items = FAMILY_ORDER.filter(k => shown.some(t => t.threat === k))
       .map(k => `<div class="lg-i">${mapSvg(k, 18)}<span>${esc(info(k).short)}</span></div>`);
     const sw = (c, l) => `<div class="lg-i"><i class="swatch" style="background:${c}"></i><span>${l}</span></div>`;
+    if (S.showTracks && shown.length) {
+      items.push('<div class="lg-i"><i class="lg-line"></i><span>Flown path</span></div>',
+        '<div class="lg-i"><i class="lg-line dotted"></i><span>Heading to</span></div>');
+    }
     if (S.showAlerts) items.push(sw('#a52f30', 'Red alert'), sw('#c2981f', 'Yellow alert'));
     if (S.showOccupied) items.push(sw('#4f2027', 'Occupied'));
     if (S.showRussia && (S.state?.ru_zones || []).length) items.push(sw('#1fb5cc', 'Danger in Russia'));
@@ -354,6 +417,7 @@
       ${svg(k, null, 16)}${esc(info(k).short)} <span class="n">${counts[k] || 0}</span></button>`);
     const opt = (key, label, title) => `<button class="chip opt ${S[key] ? 'on' : ''}" data-opt="${key}" title="${title}">${label}</button>`;
     chips.push(opt('showUnconfirmed', 'Unconfirmed', 'Show reports that only aggregators have made'));
+    chips.push(opt('showTracks', 'Tracks', 'Show the path each target has flown and where it is heading'));
     chips.push(opt('showAlerts', 'Alerts', 'Shade districts under air-raid alert (red / yellow level)'));
     chips.push(opt('showOccupied', 'Occupied', 'Occupied territory (DeepState)'));
     const ru = (S.state?.ru_zones || []).length;
