@@ -45,6 +45,7 @@ class SourceStatus:
     failures: int = 0
     next_due: float = field(default=0.0)
     via: str = "web"
+    newest_id: int = 0
 
     def as_dict(self) -> dict:
         return {k: getattr(self, k) for k in ("handle", "tier", "state", "last_fetch", "last_ok", "last_post_ts",
@@ -104,12 +105,18 @@ class RateLimiter:
 
 class WebScraper:
     def __init__(self, channels: list[dict], store: Store, on_change, poll_scale: float = 1.0,
-                 backfill_hours: float = 3.0, concurrency: int = 6, rate: float = 2.5):
+                 backfill_hours: float = 3.0, concurrency: int = 6, rate: float = 2.5,
+                 history_hours: float = 0.0, on_history=None, history_rate: float = 0.7,
+                 history_pages: int = 12):
         self.store = store
         self.on_change = on_change
         self.poll_scale = poll_scale
         self.backfill_s = backfill_hours * 3600
         self.backfill = {ch["handle"]: ch.get("backfill_hours", backfill_hours) * 3600 for ch in channels}
+        self.history_s = history_hours * 3600
+        self.on_history = on_history
+        self.history_limiter = RateLimiter(history_rate)
+        self.history_pages = history_pages
         self.sem = asyncio.Semaphore(concurrency)
         self.limiter = RateLimiter(rate)
         self.status: dict[str, SourceStatus] = {}
@@ -176,6 +183,8 @@ class WebScraper:
                             break
                         msgs = older + msgs
                         pages += 1
+                if msgs:
+                    st.newest_id = max(st.newest_id, max(m.msg_id for m in msgs))
                 cutoff = time.time() - bf
                 msgs = [m for m in msgs if m.ts >= cutoff]
                 changed = self.store.upsert(msgs)
@@ -220,8 +229,65 @@ class WebScraper:
                           "firewall? Open https://t.me/s/kpszsu in your browser to check.", errs[0] if errs else "?")
             await asyncio.sleep(300)
 
+    async def _history_channel(self, st: SourceStatus, cutoff: float) -> int:
+        """Page one channel back to `cutoff`, stopping early at posts that are already stored."""
+        bf = self.backfill.get(st.handle, self.backfill_s)
+        before = self.store.oldest_id_since(st.handle, time.time() - bf - 600)
+        if before is None and st.newest_id:
+            before = st.newest_id + 1                   # quiet channel: nothing in the live window
+        added = 0
+        for _ in range(self.history_pages):
+            if not before or self.stopped:
+                break
+            await self.history_limiter.wait()
+            r = await self._get(f"{BASE}{st.handle}?before={before}")
+            if r.status_code == 429:
+                wait = float(r.headers.get("Retry-After", "30") or 30)
+                self.limiter.penalize(min(wait, 120))
+                self.history_limiter.penalize(min(wait, 120) * 2)
+                break
+            if r.status_code != 200:
+                break
+            older, _ = parse_channel_html(r.text, st.handle)
+            older = [m for m in older if m.msg_id < before]
+            if not older:
+                break
+            keep = [m for m in older if m.ts >= cutoff]
+            changed = self.store.upsert(keep)
+            added += changed
+            if len(keep) < len(older) or (keep and not changed):
+                break                                   # reached the cutoff, or history we already have
+            before = min(m.msg_id for m in older)
+        return added
+
+    async def backfill_history(self) -> None:
+        """After the first live round, quietly read further back so the heatmap covers the last day.
+
+        Uses its own slow rate on top of the shared limiter, so live polling keeps priority.
+        """
+        if self.history_s <= self.backfill_s:
+            return
+        while any(st.state == "pending" for st in self.status.values() if st.via == "web"):
+            await asyncio.sleep(2)
+        await asyncio.sleep(5)
+        order = {"official": 0, "recon": 1, "regional": 2, "aggregator": 3}
+        total = 0
+        for st in sorted(self.status.values(), key=lambda s: order.get(s.tier, 9)):
+            if self.stopped:
+                return
+            if st.via != "web" or st.state != "ok":
+                continue
+            try:
+                total += await self._history_channel(st, time.time() - self.history_s)
+            except Exception as e:  # noqa: BLE001
+                log.debug("history for @%s failed: %s", st.handle, e)
+        log.info("heatmap: read %d older posts (last %.0f h)", total, self.history_s / 3600)
+        if self.on_history is not None and total:
+            await self.on_history()
+
     async def run(self) -> None:
         asyncio.create_task(self._report())
+        asyncio.create_task(self.backfill_history())
         async with httpx.AsyncClient(headers=HEADERS, timeout=15, follow_redirects=True,
                                      limits=httpx.Limits(max_connections=8)) as client:
             self._client = client

@@ -406,3 +406,43 @@ def test_channel_footer_does_not_turn_a_report_into_an_alert_post():
 def test_dali_follow_up_is_a_destination():
     r = parse_message("Далі Малин", ["zhytomyr"], "regional")
     assert [(b.place.key, b.role) for b in r.bare_places] == [("malyn", "dest")]
+
+
+# ------------------------------------------------------------------ patterns from real posts (direction accuracy)
+
+def test_region_header_on_its_own_line_belongs_to_the_next_line():
+    r = parse_message("Житомирщина: \nРеактивний БпЛА курсом на Овруч \n\nОдещина: \n2х Реактивні БпЛА курсом на Маяки\n\n"
+                      "✙ Розвідка неба ✙", [], "recon")
+    pairs = [(label(s.pos), s.dest.place.name) for s in r.sightings]
+    assert pairs == [("obl_zhytomyr", "Ovruch"), ("obl_odesa", "Mayaky")]
+
+
+@pytest.mark.parametrize("text,prefer", [
+    ("Новий реактивний БпЛА з Харківщини на Юріївку", ["dnipro"]),
+    ("⚠️ +1 реактивний БпЛА на Нововоскресенське", ["kherson"]),
+    ("+ Ударний БПЛА на Миронівку/Польову❗️", ["kharkiv"]),
+    ("Ще 2 шахеди курсом на Полтаву", ["poltava"]),
+])
+def test_new_target_posts_are_flagged(text, prefer):
+    assert one(text, prefer).new
+
+
+@pytest.mark.parametrize("text,prefer", [
+    ("Шахед над Новим Бугом, курс на Баштанку", ["mykolaiv"]),
+    ("Шахед повз Нову Каховку на Херсон", ["kherson"]),
+    ("Шахед над Полтавою, курс на Решетилівку", ["poltava"]),
+])
+def test_place_names_with_new_are_not_new_targets(text, prefer):
+    assert not one(text, prefer).new
+
+
+def test_along_the_border_is_not_a_position_inside_the_neighbour_country():
+    s = one("🏍 Група реактивних БпЛА на півночі Чернігівщини, рухається уздовж кордону з Білоруссю - курсом на Київщину.",
+            [], "official")
+    assert s.pos.place.oblast == "chernihiv" and label(s.dest) == "obl_kyiv"
+
+
+def test_newest_first_log_is_read_in_time_order():
+    s = one("🪖 ⭕️ шахеди\n◻️ 05:23 ✌️Без загроз\n◻️ 05:15 Транзит в напрямку🧭 м. Кривий Ріг\n◻️ 05:13 Покров\n"
+            "◻️ 05:08 Марганець", ["dnipro"])
+    assert [label(v) for v in s.via] == ["marhanets"] and label(s.pos) == "pokrov" and label(s.dest) == "kryvyi_rih"

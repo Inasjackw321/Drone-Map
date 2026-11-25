@@ -47,6 +47,9 @@
       <button class="ctl" id="snapBtn" aria-label="Snapshot of an area" title="Snapshot: select an area and download a graphic">
         <svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 8h3l2-3h6l2 3h3v11H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="2"/></svg>
       </button>
+      <button class="ctl" id="heatBtn" aria-label="Heatmap" title="Heatmap of the last 24 h / 7 days / 28 days" aria-pressed="false">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 2.5c.6 3.2 4.8 5.6 4.8 10.2A4.8 4.8 0 0 1 12 17.5a4.8 4.8 0 0 1-4.8-4.8c0-2 1-3.5 2.1-4.6.2 1.6 1 2.6 2 3.1-.4-3.2.1-6 .7-8.7Z" fill="currentColor"/><path d="M4 21h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
       <button class="ctl" id="nearMe" aria-label="Alerts near me" title="Alerts near my location">
         <svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="3.5" fill="currentColor"/><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3" stroke="currentColor" stroke-width="2"/></svg>
       </button>
@@ -54,17 +57,20 @@
 
     <div id="nearAlert" class="near-alert" hidden></div>
     <div id="legend" class="map-legend" aria-label="Legend"></div>
+    <button id="heatLegend" class="heat-legend" hidden></button>
 
     <aside id="panel" class="panel" aria-label="Details">
       <div class="sheet-handle" id="sheetHandle"><span></span></div>
       <nav class="tabs" role="tablist">
         <button role="tab" data-tab="targets" class="active">Targets <b id="tabCountTargets"></b></button>
         <button role="tab" data-tab="feed">Feed</button>
+        <button role="tab" data-tab="history">Heatmap</button>
         <button role="tab" data-tab="alerts">Alerts <b id="tabCountAlerts"></b></button>
         <button role="tab" data-tab="sources">Sources</button>
       </nav>
       <section class="tab-body" id="tab-targets"></section>
       <section class="tab-body" id="tab-feed" hidden></section>
+      <section class="tab-body" id="tab-history" hidden></section>
       <section class="tab-body" id="tab-alerts" hidden></section>
       <section class="tab-body" id="tab-sources" hidden></section>
       <section class="tab-body" id="detail" hidden></section>
@@ -75,6 +81,7 @@
   <div id="snapModal" class="modal" hidden></div>
 
   <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="vendor/leaflet-heat/leaflet-heat.js"></script>
   <script src="icons.js"></script>
   <script src="basemap.js"></script>
   <script src="snapshot.js"></script>

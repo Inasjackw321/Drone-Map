@@ -25,7 +25,11 @@
     showDetail: prefs.get('showDetail', false),
     me: prefs.get('me', null), radius: prefs.get('radius', 25), nearOn: prefs.get('nearOn', false),
     pickingMe: false, notified: new Set(), dismissed: new Set(prefs.get('dismissed', [])),
+    follow: null,
+    heat: { on: prefs.get('heatOn', false), period: prefs.get('heatPeriod', '24h'), kind: prefs.get('heatKind', 'all'),
+            data: null, key: null, loading: false, loadedAt: 0, table: false },
   };
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
   // ------------------------------------------------------------------ time & geo helpers
   const now = () => Date.now() / 1000;
@@ -84,10 +88,15 @@
   const visible = () => (S.state?.tracks || []).filter(t => !S.hidden.has(t.threat) && (S.showUnconfirmed || t.confirmed));
 
   // ---------------------------------------------------------------- predicted movement
-  // Between reports a target keeps flying: its icon advances along the reported destination or
-  // heading at its observed (or typical) speed. A new report re-anchors it.
+  // Between reports a target keeps flying: its icon advances in its direction of travel at a typical
+  // cruise speed for its type. No speed is measured or shown (post times are too coarse for that);
+  // the motion is capped in time and stops short of the destination. A new report re-anchors it.
   const PREDICT_MIN = { shahed: 25, uav: 25, gerbera: 25, jet_shahed: 12, cruise: 10, missile: 8 };
-  const SPEED_RANGE = { shahed: [120, 220], uav: [120, 220], gerbera: [100, 200], jet_shahed: [300, 550], cruise: [550, 900], missile: [550, 900] };
+  const TYPICAL_KMH = { shahed: 150, uav: 150, gerbera: 130, jet_shahed: 400, cruise: 700, missile: 700 };
+  // how far ahead "on course toward you" looks
+  const LOOKAHEAD_KM = { shahed: 40, uav: 40, gerbera: 40, jet_shahed: 70, recon: 20, lancet: 12, molniya: 12, fpv: 8,
+    cruise: 120, missile: 120, ballistic: 150, kinzhal: 150, kab: 25 };
+  const lookahead = t => LOOKAHEAD_KM[t.threat] || 40;
   function bearing(a, b) {
     const p1 = toRad(a.lat), p2 = toRad(b.lat), dl = toRad(b.lon - a.lon);
     const x = Math.sin(dl) * Math.cos(p2), y = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
@@ -99,13 +108,13 @@
     if (!maxMin || t.status !== 'active' || ['inbound', 'origin'].includes(t.precision)) return still;
     const dtMin = Math.min(maxMin, (at - t.last_seen) / 60);
     if (dtMin <= 0.2) return still;
-    const [lo, hi] = SPEED_RANGE[t.threat];
-    const speed = Math.max(lo, Math.min(hi, t.speed_kmh || t.nominal_speed_kmh || lo));
-    let km = speed * dtMin / 60, brg = t.heading;
-    if (t.dest) {
+    let km = TYPICAL_KMH[t.threat] * dtMin / 60, brg = t.heading;
+    // follow the server's heading: it already knows when a target has flown past its reported
+    // destination or turned, so only steer for the destination while that is still the course
+    if (t.dest && t.heading_source === 'dest') {
       const left = distKm(t, t.dest) - 3;
       if (left <= 1) return still;
-      brg = bearing(t, t.dest);
+      if (t.dest.precision === 'point') brg = bearing(t, t.dest);
       km = Math.min(km, left);
     }
     if (brg == null) return still;
@@ -124,7 +133,8 @@
   function tipHtml(t) {
     const p = predicted(t);
     const where = t.precision === 'inbound' ? `heading to ${esc(t.place)}` : esc(t.place) + (t.precision === 'approx' ? ' <span style="color:var(--muted)">(est.)</span>' : '');
-    const dest = t.dest && t.precision !== 'inbound' && t.precision !== 'approx' ? ` → ${esc(t.dest.name)}` : '';
+    const dest = t.dest && t.precision !== 'inbound' && t.precision !== 'approx' && t.heading_source === 'dest' ? ` → ${esc(t.dest.name)}`
+      : (t.heading != null && t.precision !== 'inbound' ? ` · heading ${compass(t.heading)}` : '');
     const unc = t.confirmed ? '' : ' · <b style="color:var(--warn)">unconfirmed</b>';
     const est = p.est ? `<br><span style="color:var(--muted)">estimated ~${Math.round(p.km)} km further since the last report</span>` : '';
     return `<b>${esc(tLabel(t))}</b> · ${where}${dest}${est}<br><span style="color:var(--muted)">last report ${ago(t.last_seen)} · ${Math.round(t.confidence * 100)}% confidence${unc}</span>`;
@@ -247,6 +257,13 @@
     DMBase.setAlerts(S.state.alerts);
     DMBase.setRuZones(S.state.ru_zones);
     drawMe();
+    drawHeat();
+    if (S.follow) {
+      const t = S.state.tracks.find(x => x.id === S.follow);
+      const d = drawn.get(S.follow);
+      if (t && t.status !== 'ended' && d?.pos) map.panTo(d.pos, { animate: !reduceMotion.matches, duration: 0.8 });
+      else S.follow = null;
+    }
   }
 
   // ------------------------------------------------------------------ header: status, summary, banners
@@ -436,14 +453,15 @@
       return `<div class="msg"><div class="mh">${link}<span>${clock(m.ts)}</span></div><div class="mt">${esc(m.text)}</div></div>`;
     }).join('');
     $('#detail').innerHTML = `
-      <div class="detail-head"><button class="back" id="backBtn">← Back</button></div>
+      <div class="detail-head"><button class="back" id="backBtn">← Back</button>
+        ${t.status !== 'ended' ? `<button class="back ${S.follow === t.id ? 'on' : ''}" id="followBtn" aria-pressed="${S.follow === t.id}" title="Keep this target in the middle of the map as it moves">${S.follow === t.id ? 'Following' : 'Follow on map'}</button>` : ''}</div>
       <div class="detail-title"><div class="ic">${svg(t.threat, null, 40)}</div>
         <div><h2>${esc(info(t.threat).label)}${t.count > 1 ? ` ×${t.count}` : ''}</h2>
         <div class="sub">${esc(statusTxt)} · last report ${ago(t.last_seen)}</div></div></div>
       <dl class="kv">
         <dt>Position</dt><dd>${esc(t.precision === 'inbound' ? 'not yet seen, reported heading to ' + t.place : t.place)}${t.precision === 'approx' ? '<br><span style="color:var(--muted);font-size:12px">estimated: the report gave where it is heading, not where it is</span>' : ''}</dd>
-        <dt>Heading</dt><dd>${t.dest ? '→ ' + esc(t.dest.name) : ''}${t.heading != null ? ` (${compass(t.heading)}, ${Math.round(t.heading)}°)` : (t.dest ? '' : 'unknown')}</dd>
-        <dt>Speed</dt><dd>${t.speed_kmh ? `~${t.speed_kmh} km/h observed` : `typical ${t.nominal_speed_kmh} km/h`}</dd>
+        <dt>Heading</dt><dd>${headingText(t)}</dd>
+        ${t.dest && t.heading_source !== 'dest' ? `<dt>Reported to</dt><dd>${esc(t.dest.name)}</dd>` : ''}
         <dt>Confidence</dt><dd>${conf}% ${confBar(t.confidence)}<br><span style="color:var(--muted);font-size:12px">${esc(confNote)}</span></dd>
         <dt>First seen</dt><dd>${clock(t.first_seen)} (${ago(t.first_seen)})</dd>
         ${t.destroyed ? `<dt>Shot down</dt><dd>${t.destroyed}</dd>` : ''}
@@ -454,6 +472,24 @@
       <div class="srcs">${t.sources.map(s => `<span title="${esc(TIER_LABEL[s.tier])}"><i class="tier-dot tier-${s.tier}"></i>${esc(s.name)}</span>`).join('')}</div>
       <div class="section-title">Reports</div>${msgs}`;
     $('#backBtn').onclick = () => select(null);
+    const fb = $('#followBtn');
+    if (fb) fb.onclick = () => {
+      S.follow = S.follow === t.id ? null : t.id;
+      const d = drawn.get(t.id);
+      if (S.follow && d?.pos) map.flyTo(d.pos, Math.max(map.getZoom(), 8), { duration: 0.6 });
+      renderDetail();
+    };
+  }
+
+  const HEADING_SOURCE = {
+    dest: 'towards the reported destination',
+    reported: 'course given in the reports',
+    track: 'from the path it has flown',
+  };
+  function headingText(t) {
+    if (t.heading == null) return t.dest ? '→ ' + esc(t.dest.name) : 'unknown';
+    const where = t.dest && t.heading_source === 'dest' ? '→ ' + esc(t.dest.name) + ' ' : '';
+    return `${where}${compass(t.heading)} (${Math.round(t.heading)}°)<br><span style="color:var(--muted);font-size:12px">${esc(HEADING_SOURCE[t.heading_source] || '')}</span>`;
   }
 
   // ------------------------------------------------------------------ panel: feed
@@ -512,12 +548,223 @@
       <div class="section-title">How it works</div>
       <p class="hint">Each target merges reports from several channels. Official sources weigh most, then reconnaissance and regional observers.
       Aggregators only count when they agree with someone else; a target seen only by aggregators is shown faded with a “?”.
-      Each icon sits where the target is now and points the way it is flying. Between reports it keeps moving along its reported
-      course at its estimated speed, and glides to the real position when the next report arrives.</p>`;
+      Each icon sits where the target is now and points the way it is flying: towards its reported destination, or along the path
+      it has flown once it has passed that place or turned. Between reports it keeps moving that way at a typical speed for its
+      type (no speed is measured), and glides to the real position when the next report arrives.</p>`;
     $('#radiusSel').onchange = e => { S.radius = +e.target.value; prefs.set('radius', S.radius); drawMe(); checkNear(); };
     $('#gpsBtn').onclick = locate;
     $('#pickBtn').onclick = () => { S.pickingMe = true; toast('Tap the map to set your location'); collapseSheet(); };
     $('#nearToggle').onclick = () => setNear(!S.nearOn);
+  }
+
+  // ------------------------------------------------------------------ heatmap (last 24 h / 7 days / 28 days)
+  const HEAT_PERIODS = [['24h', '24 hours'], ['7d', '7 days'], ['28d', '28 days']];
+  const HEAT_KINDS = [['all', 'All'], ['drone', 'Drones'], ['missile', 'Missiles'], ['kab', 'KAB'], ['explosion', 'Explosions']];
+  const HEAT_KIND_TEXT = { all: 'drones, missiles & KABs', drone: 'drones (all types)', missile: 'missiles (all types)', kab: 'guided bombs (KAB)', explosion: 'explosions' };
+  // one-hue sequential ramp (blue 100–700) on the dark district map: the light end means "most"
+  const HEAT_RAMP = { 0.15: '#0f4a96', 0.35: '#2370cd', 0.55: '#338ced', 0.75: '#84b9f3', 1: '#cce3fd' };
+  const FAMILY_SERIES = [['drone', 'Drones', 'shahed'], ['missile', 'Missiles', 'cruise'], ['kab', 'KAB', 'kab']];
+  let heatLayer = null;
+
+  function heatKey() { return `${S.heat.period}|${S.heat.kind}`; }
+
+  async function loadHeat(force = false) {
+    const key = heatKey();
+    if (S.heat.loading || (!force && S.heat.key === key && Date.now() - S.heat.loadedAt < 60000)) return;
+    S.heat.loading = true;
+    if (S.heat.key !== key) { S.heat.data = null; if (S.tab === 'history' && !S.selected) renderHistory(); }
+    try {
+      const q = new URLSearchParams({ period: S.heat.period, kind: S.heat.kind, tzo: new Date().getTimezoneOffset() });
+      const r = await fetch('/api/heatmap?' + q, { cache: 'no-store' });
+      if (r.ok && heatKey() === key) { S.heat.data = await r.json(); S.heat.key = key; S.heat.loadedAt = Date.now(); }
+    } catch { /* offline: keep what we have */ }
+    S.heat.loading = false;
+    if (heatKey() !== key) return loadHeat(true);
+    drawHeat();
+    if (S.tab === 'history' && !S.selected) renderHistory();
+  }
+
+  function drawHeat() {
+    const d = S.heat.data;
+    const btn = $('#heatBtn');
+    btn.classList.toggle('on', S.heat.on); btn.setAttribute('aria-pressed', S.heat.on);
+    const legend = $('#heatLegend');
+    if (!S.heat.on || !d || !window.L.heatLayer) {
+      if (heatLayer) {
+        map.getPanes().overlayPane.appendChild(heatLayer._canvas);     // leaflet.heat removes it from there
+        map.removeLayer(heatLayer); heatLayer = null;
+      }
+      legend.hidden = !S.heat.on;
+      if (S.heat.on) legend.innerHTML = `<span class="hl-t">Heatmap</span><span class="hl-s">loading…</span>`;
+      return;
+    }
+    // maxZoom = minZoom: full intensity at every zoom (the points are already merged per place on the server)
+    const dense = d.places > 120;
+    const opts = { radius: dense ? 16 : 22, blur: dense ? 14 : 18, minOpacity: dense ? 0.25 : 0.35, maxZoom: map.getMinZoom(), max: d.scale,
+      gradient: HEAT_RAMP };
+    if (!heatLayer) {
+      // its own pane: above the alert shading, below borders and place names
+      if (!map.getPane('dm-heat')) { const pn = map.createPane('dm-heat'); pn.style.zIndex = 290; pn.style.pointerEvents = 'none'; }
+      heatLayer = L.heatLayer(d.points, opts).addTo(map);
+      map.getPane('dm-heat').appendChild(heatLayer._canvas);
+    } else { heatLayer.setOptions(opts); heatLayer.setLatLngs(d.points); }
+    const period = HEAT_PERIODS.find(p => p[0] === d.period)?.[1] || d.period;
+    const grad = Object.entries(opts.gradient).sort((a, b) => a[0] - b[0]).map(([k, v]) => `${v} ${k * 100}%`).join(',');
+    legend.hidden = false;
+    legend.innerHTML = `<span class="hl-t">Heatmap · last ${esc(period)}</span>
+      <span class="hl-s">${esc(HEAT_KIND_TEXT[d.kind])} · ${d.observations.toLocaleString()} reported position${d.observations === 1 ? '' : 's'}</span>
+      <span class="hl-bar"><i style="background:linear-gradient(90deg,${grad})"></i></span><span class="hl-ends"><span>fewer</span><span>more reports</span></span>`;
+  }
+
+  function setHeat(patch) {
+    Object.assign(S.heat, patch);
+    prefs.set('heatOn', S.heat.on); prefs.set('heatPeriod', S.heat.period); prefs.set('heatKind', S.heat.kind);
+    if (S.heat.on || S.tab === 'history') loadHeat();
+    drawHeat();
+    if (S.tab === 'history' && !S.selected) renderHistory();
+  }
+  $('#heatBtn').addEventListener('click', () => {
+    setHeat({ on: !S.heat.on });
+    toast(S.heat.on ? 'Heatmap on. Change the period in the Heatmap tab.' : 'Heatmap off');
+  });
+  $('#heatLegend').addEventListener('click', () => { S.selected = null; showTab('history'); expandSheet(); });
+
+  function bucketLabel(t, step, long = false) {
+    const d = new Date(t * 1000);
+    if (step < 86400) {
+      const h = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return long ? `${d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}, ${h}–${new Date((t + step) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : h;
+    }
+    return long ? d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' }) : d.toLocaleDateString([], { day: 'numeric', month: 'short' });
+  }
+
+  function seriesFor(d) {
+    if (d.kind === 'all') return FAMILY_SERIES.map(([key, label, icon], i) => ({ key, label, icon, color: `var(--s${i + 1})` }));
+    const label = HEAT_KINDS.find(k => k[0] === d.kind)?.[1] || 'Reports';
+    return [{ key: '*', label, color: 'var(--s1)' }];
+  }
+  const valOf = (row, key) => key === '*' ? Object.entries(row).reduce((a, [k, v]) => k === 't' ? a : a + v, 0) : (row[key] || 0);
+
+  // stacked columns: one per hour (24 h) or per day (7 / 28 days)
+  function chartSvg(d, series) {
+    const rows = d.series, W = 360, H = 132, padL = 28, padR = 6, padT = 8, padB = 22;
+    const totals = rows.map(r => series.reduce((a, s) => a + valOf(r, s.key), 0));
+    const max = Math.max(1, ...totals);
+    const nice = max <= 5 ? Math.ceil(max) : max <= 10 ? 10 : Math.ceil(max / (max <= 50 ? 10 : max <= 200 ? 50 : 100)) * (max <= 50 ? 10 : max <= 200 ? 50 : 100);
+    const plotW = W - padL - padR, plotH = H - padT - padB, slot = plotW / rows.length;
+    const bw = Math.max(3, Math.min(24, slot * 0.68)), y = v => padT + plotH - (v / nice) * plotH;
+    const grid = [nice / 2, nice].map(v => `<line x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}" class="ch-grid"/>
+      <text x="${padL - 5}" y="${y(v) + 3.5}" class="ch-tick" text-anchor="end">${Math.round(v)}</text>`).join('');
+    const every = rows.length > 14 ? Math.ceil(rows.length / 6) : rows.length > 8 ? 2 : 1;
+    let bars = '', ticks = '', hits = '';
+    rows.forEach((r, i) => {
+      const x = padL + i * slot + (slot - bw) / 2;
+      let base = 0;
+      const segs = series.map(s => ({ s, v: valOf(r, s.key) })).filter(x => x.v > 0);
+      segs.forEach((g, j) => {
+        const y0 = y(base), y1 = y(base + g.v);
+        const gap = j > 0 ? 2 : 0;                             // 2px surface gap between stacked segments
+        const top = y1, bottom = y0 - gap, h = Math.max(0, bottom - top);
+        if (h > 0.5) {
+          const last = j === segs.length - 1, rr = last ? Math.min(4, h, bw / 2) : 0;
+          bars += rr ? `<path d="M${x},${bottom} V${top + rr} Q${x},${top} ${x + rr},${top} H${x + bw - rr} Q${x + bw},${top} ${x + bw},${top + rr} V${bottom} Z" fill="${g.s.color}"/>`
+            : `<rect x="${x}" y="${top}" width="${bw}" height="${h}" fill="${g.s.color}"/>`;
+        }
+        base += g.v;
+      });
+      if (i % every === 0) ticks += `<text x="${x + bw / 2}" y="${H - 6}" class="ch-tick" text-anchor="middle">${esc(bucketLabel(r.t, d.step))}</text>`;
+      hits += `<rect class="ch-hit" data-i="${i}" x="${padL + i * slot}" y="${padT}" width="${slot}" height="${plotH}" tabindex="0" aria-label="${esc(bucketLabel(r.t, d.step, true))}: ${totals[i]} reports"/>`;
+    });
+    return `<svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label="Reported positions per ${d.step < 86400 ? 'hour' : 'day'}">
+      ${grid}<line x1="${padL}" x2="${W - padR}" y1="${y(0)}" y2="${y(0)}" class="ch-base"/>${bars}${ticks}${hits}</svg>`;
+  }
+
+  function renderHistory() {
+    const d = S.heat.key === heatKey() ? S.heat.data : null;
+    const seg = (name, items, cur) => `<div class="seg" role="radiogroup" aria-label="${name}">${items.map(([k, l]) =>
+      `<button role="radio" aria-checked="${k === cur}" class="${k === cur ? 'on' : ''}" data-${name}="${k}">${esc(l)}</button>`).join('')}</div>`;
+    let html = `${seg('period', HEAT_PERIODS.map(([k, l]) => [k, 'Last ' + l]), S.heat.period)}
+      ${seg('kind', HEAT_KINDS, S.heat.kind)}
+      <div class="setting"><span>Show heatmap on the map</span><button class="btn ${S.heat.on ? 'btn-accent' : ''}" id="heatToggle" aria-pressed="${S.heat.on}">${S.heat.on ? 'On' : 'Off'}</button></div>`;
+    if (!d) {
+      $('#tab-history').innerHTML = html + `<div class="empty">Loading history…</div>`;
+      bindHistory(); return;
+    }
+    const series = seriesFor(d);
+    const sum = key => d.series.reduce((a, r) => a + valOf(r, key), 0);
+    const period = HEAT_PERIODS.find(p => p[0] === d.period)?.[1];
+    html += `<div class="tiles">
+        <div class="tile"><b>${d.observations.toLocaleString()}</b><span>reported positions</span></div>
+        <div class="tile"><b>${d.places.toLocaleString()}</b><span>places</span></div>
+        <div class="tile"><b>${esc(d.by_oblast[0]?.name || '–')}</b><span>most reports</span></div></div>`;
+    if (d.partial) {
+      html += `<p class="note">${d.history_since ? `History only goes back to ${esc(new Date(d.history_since * 1000).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))}.` : 'No history recorded yet.'}
+        Drone Map records history while it is running (and reads back the last ${S.state?.mode === 'demo' ? 'nights' : '24 hours'} on start), so the last ${esc(period)} fill in over time.</p>`;
+    }
+    if (!d.observations) {
+      html += `<div class="empty"><b>Nothing recorded</b>No ${esc(HEAT_KIND_TEXT[d.kind])} with a known position in the last ${esc(period)}.</div>`;
+    } else {
+      const legend = series.length > 1 ? `<div class="ch-legend">${series.map(s => `<span><i style="background:${s.color}"></i>${svg(s.icon, null, 14)}${esc(s.label)} <b>${sum(s.key).toLocaleString()}</b></span>`).join('')}</div>` : '';
+      html += `<div class="section-title">Reports per ${d.step < 86400 ? 'hour' : 'day'}</div>
+        <div class="chart-wrap">${legend}${chartSvg(d, series)}<div class="ch-tip" hidden></div></div>
+        <button class="linkbtn" id="tableToggle" aria-expanded="${S.heat.table}">${S.heat.table ? 'Hide table' : 'Show as table'}</button>
+        ${S.heat.table ? `<table class="dtable"><thead><tr><th>${d.step < 86400 ? 'Hour' : 'Day'}</th>${series.map(s => `<th>${esc(s.label)}</th>`).join('')}</tr></thead><tbody>
+          ${d.series.slice().reverse().map(r => `<tr><td>${esc(bucketLabel(r.t, d.step, true))}</td>${series.map(s => `<td>${valOf(r, s.key)}</td>`).join('')}</tr>`).join('')}</tbody></table>` : ''}
+        <div class="section-title">By type</div>
+        <div class="bars">${d.by_threat.map(b => bar(svg(b.threat, null, 18) + esc(info(b.threat).label), b.n, d.by_threat[0].n)).join('') || '<div class="empty" style="padding:8px">–</div>'}</div>
+        <div class="section-title">Regions with most reports</div>
+        <div class="bars">${d.by_oblast.map(o => bar(esc(o.name), o.n, d.by_oblast[0].n)).join('')}</div>
+        <div class="section-title">Places</div>
+        <div class="bars">${d.top_places.map(p => bar(`${esc(p.place)} <span class="muted">${esc(p.oblast)}</span>`, p.n, d.top_places[0].n, `data-fly="${p.lat},${p.lon}"`)).join('')}</div>`;
+    }
+    html += `<p class="note">Each report of a drone or missile at a named town or village adds heat there. Region-wide reports
+      ("drones over Sumy region") are left out, so the middle of every region does not light up. Only reports confirmed by an
+      official, reconnaissance or regional channel count.</p>`;
+    $('#tab-history').innerHTML = html;
+    bindHistory(d, series);
+  }
+
+  function bar(label, n, max, attrs = '') {
+    return `<div class="hbar" ${attrs} ${attrs ? 'tabindex="0" role="button"' : ''}><span class="hb-l">${label}</span><span class="hb-n">${n.toLocaleString()}</span>
+      <span class="hb-t"><i style="width:${Math.max(2, Math.round(n / max * 100))}%"></i></span></div>`;
+  }
+
+  function bindHistory(d, series) {
+    const root = $('#tab-history');
+    root.querySelectorAll('[data-period]').forEach(b => b.onclick = () => setHeat({ period: b.dataset.period }));
+    root.querySelectorAll('[data-kind]').forEach(b => b.onclick = () => setHeat({ kind: b.dataset.kind }));
+    $('#heatToggle').onclick = () => setHeat({ on: !S.heat.on });
+    const tt = $('#tableToggle');
+    if (tt) tt.onclick = () => { S.heat.table = !S.heat.table; renderHistory(); };
+    root.querySelectorAll('[data-fly]').forEach(el => {
+      const go = () => {
+        const [la, lo] = el.dataset.fly.split(',').map(Number);
+        if (!S.heat.on) setHeat({ on: true });
+        map.flyTo([la, lo], Math.max(map.getZoom(), 9), { duration: 0.6 }); collapseSheet();
+      };
+      el.onclick = go; el.onkeydown = e => { if (e.key === 'Enter') go(); };
+    });
+    const tip = root.querySelector('.ch-tip');
+    if (!d || !tip) return;
+    const show = el => {
+      const r = d.series[+el.dataset.i];
+      const total = series.reduce((a, s) => a + valOf(r, s.key), 0);
+      tip.innerHTML = `<b>${esc(bucketLabel(r.t, d.step, true))}</b>` + (series.length > 1
+        ? series.map(s => `<div><i style="background:${s.color}"></i>${esc(s.label)}<span>${valOf(r, s.key)}</span></div>`).join('') + `<div class="tot">Total<span>${total}</span></div>`
+        : `<div class="tot">${esc(series[0].label)}<span>${total}</span></div>`);
+      tip.hidden = false;
+      const wrap = root.querySelector('.chart-wrap').getBoundingClientRect(), b = el.getBoundingClientRect();
+      const x = Math.min(wrap.width - tip.offsetWidth - 2, Math.max(2, b.left - wrap.left + b.width / 2 - tip.offsetWidth / 2));
+      tip.style.left = x + 'px';
+      root.querySelectorAll('.ch-hit.hover').forEach(h => h.classList.remove('hover'));
+      el.classList.add('hover');
+    };
+    const hide = () => { tip.hidden = true; root.querySelectorAll('.ch-hit.hover').forEach(h => h.classList.remove('hover')); };
+    root.querySelectorAll('.ch-hit').forEach(el => {
+      el.addEventListener('mouseenter', () => show(el)); el.addEventListener('focus', () => show(el));
+      el.addEventListener('mouseleave', hide); el.addEventListener('blur', hide);
+      el.addEventListener('click', () => show(el));
+    });
   }
 
   // ------------------------------------------------------------------ panel: sources
@@ -552,7 +799,8 @@
   function showTab(tab) {
     S.tab = tab;
     $$('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab && !S.selected));
-    for (const id of ['targets', 'feed', 'alerts', 'sources']) $(`#tab-${id}`).hidden = !!S.selected || id !== tab;
+    for (const id of ['targets', 'feed', 'history', 'alerts', 'sources']) $(`#tab-${id}`).hidden = !!S.selected || id !== tab;
+    if (tab === 'history') loadHeat();
     $('#detail').hidden = !S.selected;
     renderPanel();
   }
@@ -562,11 +810,13 @@
     if (S.selected) return renderDetail();
     if (S.tab === 'targets') renderTargets();
     else if (S.tab === 'feed') renderFeed();
+    else if (S.tab === 'history') renderHistory();
     else if (S.tab === 'alerts') renderAlertsTab();
     else if (S.tab === 'sources') renderSources();
   }
 
   function select(id, fly = true) {
+    if (id !== S.selected) S.follow = null;
     S.selected = id;
     showTab(S.tab);
     renderMap();
@@ -624,7 +874,7 @@
       if (t.precision !== 'inbound' && d <= S.radius) why = `${Math.round(d)} km from you`;
       else if (t.dest && distKm(S.me, t.dest) <= S.radius) why = `heading to ${t.dest.name}`;
       else if ((pp.brg ?? t.heading) != null && t.precision !== 'inbound') {
-        const ahead = Math.min(150, (t.speed_kmh || t.nominal_speed_kmh) * 0.25);
+        const ahead = lookahead(t);
         for (let k = 5; k <= ahead; k += 5) {
           const [la, lo] = project(pp.lat, pp.lon, pp.brg ?? t.heading, k);
           if (distKm(S.me, { lat: la, lon: lo }) <= S.radius) { why = `on course toward you`; break; }
@@ -777,7 +1027,8 @@
   // ------------------------------------------------------------------ data loop
   function renderAll(mapToo) {
     if (S.selected && !(S.state?.tracks || []).some(t => t.id === S.selected)) S.selected = null;
-    renderSummary(); renderFilters(); renderBanners(); renderPanel(); renderLegend();
+    renderSummary(); renderFilters(); renderBanners(); renderLegend();
+    if (S.selected || S.tab !== 'history') renderPanel();      // the heatmap tab refreshes on its own
     if (mapToo) renderMap();
     $('#tabCountTargets').textContent = visible().filter(t => t.status === 'active').length || '';
     $('#tabCountAlerts').textContent = (S.state?.alerts || []).length || '';
@@ -811,6 +1062,9 @@
       if (r.ok) DMBase.setOccupied(await r.json());
     } catch { /* offline: keep what we have */ }
   }
+  map.on('dragstart', () => { if (S.follow) { S.follow = null; if (S.selected) renderDetail(); toast('Stopped following'); } });
+  if (S.heat.on) loadHeat();
+  setInterval(() => { if (S.heat.on || (S.tab === 'history' && !S.selected)) loadHeat(); }, 60000);
   poll();
   loadSources();
   loadOccupied();

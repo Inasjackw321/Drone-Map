@@ -1,9 +1,9 @@
 /* Drone Map service worker: offline app shell + last known state. */
-const VERSION = 'dm-v5';
+const VERSION = 'dm-v6';
 const SHELL = [
   '/', '/index.html', '/styles.css', '/app.js', '/icons.js', '/basemap.js', '/snapshot.js', '/data/admin.json', '/manifest.webmanifest',
   '/icons/favicon.svg', '/icons/icon-192.png', '/icons/icon-512.png',
-  '/vendor/leaflet/leaflet.css', '/vendor/leaflet/leaflet.js',
+  '/vendor/leaflet/leaflet.css', '/vendor/leaflet/leaflet.js', '/vendor/leaflet-heat/leaflet-heat.js',
 ];
 
 self.addEventListener('install', e => {
