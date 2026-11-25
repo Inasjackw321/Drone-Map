@@ -28,6 +28,12 @@ class Store:
                 channel TEXT NOT NULL, msg_id INTEGER NOT NULL, ts REAL NOT NULL, text TEXT NOT NULL,
                 fetched REAL NOT NULL, PRIMARY KEY (channel, msg_id))""")
             self._db.execute("CREATE INDEX IF NOT EXISTS idx_messages_ts ON messages(ts)")
+            # long-term history for the heatmap: one row per observed position (see Fusion.heat_points)
+            self._db.execute("""CREATE TABLE IF NOT EXISTS heat (
+                key TEXT PRIMARY KEY, kind TEXT NOT NULL, family TEXT NOT NULL, threat TEXT NOT NULL,
+                ts REAL NOT NULL, lat REAL NOT NULL, lon REAL NOT NULL, place TEXT, oblast TEXT,
+                weight REAL NOT NULL, confirmed INTEGER NOT NULL)""")
+            self._db.execute("CREATE INDEX IF NOT EXISTS idx_heat_ts ON heat(ts)")
             self._db.commit()
         self.revision = 0
 
@@ -67,6 +73,49 @@ class Store:
         with self._lock:
             self._db.execute("DELETE FROM messages WHERE ts < ?", (older_than,))
             self._db.commit()
+
+    # ------------------------------------------------------------------ heatmap history
+    def add_heat(self, rows: list[dict]) -> None:
+        """Insert observed positions; a row that is already there keeps the most specific type."""
+        if not rows:
+            return
+        with self._lock:
+            self._db.executemany(
+                """INSERT INTO heat VALUES (:key,:kind,:family,:threat,:ts,:lat,:lon,:place,:oblast,:weight,:confirmed)
+                   ON CONFLICT(key) DO UPDATE SET threat=excluded.threat, weight=excluded.weight,
+                   place=excluded.place, oblast=excluded.oblast, confirmed=MAX(confirmed, excluded.confirmed)""",
+                rows)
+            self._db.commit()
+
+    def heat_since(self, ts: float, confirmed_only: bool = True) -> list[tuple]:
+        """(kind, family, threat, ts, lat, lon, place, oblast, weight) rows newer than ts."""
+        q = "SELECT kind, family, threat, ts, lat, lon, place, oblast, weight FROM heat WHERE ts >= ?"
+        if confirmed_only:
+            q += " AND confirmed = 1"
+        with self._lock:
+            return self._db.execute(q + " ORDER BY ts", (ts,)).fetchall()
+
+    def heat_first_ts(self) -> float | None:
+        with self._lock:
+            row = self._db.execute("SELECT MIN(ts) FROM heat").fetchone()
+        return row[0]
+
+    def prune_heat(self, older_than: float) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM heat WHERE ts < ?", (older_than,))
+            self._db.commit()
+
+    def first_ts(self) -> float | None:
+        with self._lock:
+            row = self._db.execute("SELECT MIN(ts) FROM messages").fetchone()
+        return row[0]
+
+    def oldest_id_since(self, channel: str, ts: float) -> int | None:
+        """The oldest stored post of a channel that is newer than ts."""
+        with self._lock:
+            row = self._db.execute("SELECT MIN(msg_id) FROM messages WHERE channel=? AND ts >= ?",
+                                   (channel, ts)).fetchone()
+        return row[0]
 
     def clear(self) -> None:
         with self._lock:
