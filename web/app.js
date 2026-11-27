@@ -19,7 +19,6 @@
     selected: null, tab: 'targets',
     hidden: new Set(prefs.get('hidden', [])),
     showUnconfirmed: prefs.get('showUnconfirmed', true),
-    showTracks: prefs.get('showTracks', true),
     showAlerts: prefs.get('alertsOn', true),
     showOccupied: prefs.get('showOccupied', true),
     showRussia: prefs.get('showRussia', true),
@@ -99,89 +98,6 @@
     cruise: 120, missile: 120, ballistic: 150, kinzhal: 150, kab: 25 };
   const lookahead = t => LOOKAHEAD_KM[t.threat] || 40;
 
-  // ---------------------------------------------------------------- tracks: flown path and course
-  // Angle on screen (clockwise from up) from a to b. Web Mercator keeps angles, so this does not
-  // depend on the zoom level, and an arrowhead lines up with the leg it sits on.
-  function screenAngle(a, b) {
-    const pa = map.project(L.latLng(a[0], a[1]), 8), pb = map.project(L.latLng(b[0], b[1]), 8);
-    return (toDeg(Math.atan2(pb.x - pa.x, pa.y - pb.y)) + 360) % 360;
-  }
-  function arrowIcon(c, deg, faded) {
-    return L.divIcon({ className: '', iconSize: [12, 12], iconAnchor: [6, 6],
-      html: `<svg class="trk-arrow" viewBox="0 0 12 12" width="12" height="12" style="transform:rotate(${deg}deg);opacity:${faded ? 0.4 : 0.95}"><path d="M6 1.5 L10.5 10 L6 7.6 L1.5 10 Z" fill="${c}" stroke="#0b0e12" stroke-width="1" stroke-linejoin="round"/></svg>` });
-  }
-  // Trails belong to the icons: the solid path through the towns the target was reported over
-  // (from the server's cleaned trail, fading with age), a dashed link from the last report to where
-  // the icon is now (estimated), and a dotted line on to where it is going. The live parts are
-  // updated with the icon on every frame, so the trail never comes apart from the icon.
-  const TRAIL_FADE_MIN = { drone: 90, jet_shahed: 60, missile: 25, kab: 12, ballistic: 10, kinzhal: 10, recon: 120, lancet: 40, fpv: 20, molniya: 30 };
-  const fadeMin = t => TRAIL_FADE_MIN[t.threat] || TRAIL_FADE_MIN[t.family] || 60;
-  const wantsTrail = t => t.status !== 'ended' && (S.showTracks || S.selected === t.id);
-
-  function buildTrail(d) {
-    const t = d.t, c = info(t.threat).color, sel = S.selected === t.id;
-    const faded = t.status !== 'active' || !t.confirmed || (S.selected && !sel);     // others step back
-    const tr = t.trail || [];
-    const g = L.layerGroup();
-    for (let i = 1; i < tr.length; i++) {
-      const a = tr[i - 1], b = tr[i];
-      const fresh = Math.max(0, 1 - (now() - b.ts) / (fadeMin(t) * 60));
-      L.polyline([[a.lat, a.lon], [b.lat, b.lon]], {
-        color: c, weight: sel ? 4 : 2.6, opacity: (faded ? 0.25 : 0.35) + (faded ? 0.15 : 0.55) * fresh,
-        lineCap: 'round', dashArray: t.confirmed ? null : '6 7', interactive: false,
-      }).addTo(g);
-      if (distKm(a, b) >= 10) {
-        L.marker([(a.lat + b.lat) / 2, (a.lon + b.lon) / 2], { icon: arrowIcon(c, screenAngle([a.lat, a.lon], [b.lat, b.lon]), faded), interactive: false, keyboard: false }).addTo(g);
-      }
-    }
-    tr.forEach(p => {
-      L.circleMarker([p.lat, p.lon], { radius: sel ? 4 : 3, color: '#0b0e12', weight: 1, fillColor: c, fillOpacity: faded ? 0.4 : 0.95 })
-        .bindTooltip(`${esc(p.place)} · ${clock(p.ts)}`, { className: 'dm-tip', direction: 'top' })
-        .on('click', () => select(t.id, false)).addTo(g);
-    });
-    d.live = L.polyline([], { color: c, weight: sel ? 2.6 : 2, opacity: faded ? 0.35 : 0.7, dashArray: '5 6', interactive: false }).addTo(g);
-    d.course = L.polyline([], { color: c, weight: sel ? 3 : 2, opacity: faded ? 0.3 : 0.75, dashArray: '1 7', lineCap: 'round', interactive: false }).addTo(g);
-    d.destMk = null;
-    if (t.status === 'active' && t.dest && t.heading_source === 'dest' && t.dest.precision === 'point'
-        && (sel || distKm(t, t.dest) <= 2 * lookahead(t))) {
-      d.destMk = L.circleMarker([t.dest.lat, t.dest.lon], { radius: 5, color: c, weight: 2, dashArray: '2 3', fill: false, opacity: faded ? 0.4 : 0.9 })
-        .bindTooltip(`→ ${esc(t.dest.name)}`, { permanent: sel, className: 'dest-label', direction: 'right', offset: [7, 0] }).addTo(g);
-    }
-    return g;
-  }
-
-  function syncTrail(d) {
-    const t = d.t, show = wantsTrail(t);
-    const key = show ? JSON.stringify([t.trail, t.status, t.confirmed, t.dest, t.heading_source, S.selected, Math.floor(now() / 60)]) : '';
-    if (key === d.trailKey) return;
-    d.trailKey = key;
-    if (d.trailLayer) { layers.tracks.removeLayer(d.trailLayer); d.trailLayer = d.live = d.course = null; }
-    if (show) d.trailLayer = buildTrail(d).addTo(layers.tracks);
-  }
-
-  // the live parts: last report -> icon (estimated), icon -> where it is going
-  function updateLive(d, p) {
-    if (!d.trailLayer) return;
-    const t = d.t, pos = { lat: d.pos[0], lon: d.pos[1] };
-    const sel = S.selected === t.id, reach = lookahead(t);
-    const last = (t.trail || [])[t.trail?.length - 1];
-    // last report -> icon: only a hop it could plausibly have made; a jump to an estimate near a new
-    // destination far away would draw a flight nobody saw
-    const hop = last ? distKm(last, pos) : 0;
-    d.live.setLatLngs(last && hop > 0.5 && hop <= 1.5 * reach ? [[last.lat, last.lon], d.pos] : []);
-    let aim = null;
-    if (t.status === 'active' && !['region', 'inbound', 'origin'].includes(t.precision)) {
-      const toDest = t.dest && t.heading_source === 'dest' && t.dest.precision === 'point';
-      const left = toDest ? distKm(pos, t.dest) : 0;
-      if (toDest && left > 1 && (sel || left <= reach)) aim = [t.dest.lat, t.dest.lon];
-      else {
-        const brg = toDest ? bearing(pos, t.dest) : (p.brg ?? t.heading);
-        if (brg != null && (!toDest || left > 1)) aim = project(pos.lat, pos.lon, brg, Math.min(reach, toDest ? left : reach));
-      }
-    }
-    d.course.setLatLngs(aim ? [d.pos, aim] : []);
-  }
-
   function bearing(a, b) {
     const p1 = toRad(a.lat), p2 = toRad(b.lat), dl = toRad(b.lon - a.lon);
     const x = Math.sin(dl) * Math.cos(p2), y = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
@@ -260,7 +176,6 @@
     const { key, icon } = iconFor(t);
     if (key !== d.iconKey) { d.marker.setIcon(icon); d.iconKey = key; d.rot = null; }
     d.marker.setZIndexOffset(zFor(t));
-    syncTrail(d);
     placeTrack(d, performance.now());
   }
 
@@ -277,7 +192,6 @@
     }
     d.pos = [lat, lon];
     d.marker.setLatLng(d.pos);
-    updateLive(d, p);
     const rot = t.precision === 'inbound' ? 0 : (p.brg ?? t.heading ?? 0);
     if (d.rot === null || Math.abs(rot - d.rot) > 0.5) {
       const el = d.marker.getElement()?.querySelector('.mk-rot');
@@ -294,7 +208,6 @@
     for (const [id, d] of drawn) {
       if (!ids.has(id)) {
         layers.markers.removeLayer(d.marker);
-        if (d.trailLayer) layers.tracks.removeLayer(d.trailLayer);
         drawn.delete(id);
       }
     }
@@ -425,11 +338,6 @@
     const items = FAMILY_ORDER.filter(k => shown.some(t => t.threat === k))
       .map(k => `<div class="lg-i">${mapSvg(k, 18)}<span>${esc(info(k).short)}</span></div>`);
     const sw = (c, l) => `<div class="lg-i"><i class="swatch" style="background:${c}"></i><span>${l}</span></div>`;
-    if (S.showTracks && shown.length) {
-      items.push('<div class="lg-i"><i class="lg-line"></i><span>Flown path</span></div>',
-        '<div class="lg-i"><i class="lg-line dashed"></i><span>Since last report</span></div>',
-        '<div class="lg-i"><i class="lg-line dotted"></i><span>Heading to</span></div>');
-    }
     if (S.showAlerts) items.push(sw('#a52f30', 'Red alert'), sw('#c2981f', 'Yellow alert'));
     if (S.showOccupied) items.push(sw('#4f2027', 'Occupied'));
     if (S.showRussia && (S.state?.ru_zones || []).length) items.push(sw('#1fb5cc', 'Danger in Russia'));
@@ -450,7 +358,6 @@
       ${svg(k, null, 16)}${esc(info(k).short)} <span class="n">${counts[k] || 0}</span></button>`);
     const opt = (key, label, title) => `<button class="chip opt ${S[key] ? 'on' : ''}" data-opt="${key}" title="${title}">${label}</button>`;
     chips.push(opt('showUnconfirmed', 'Unconfirmed', 'Show reports that only aggregators have made'));
-    chips.push(opt('showTracks', 'Tracks', 'Show the path each target has flown and where it is heading'));
     chips.push(opt('showAlerts', 'Alerts', 'Shade districts under air-raid alert (red / yellow level)'));
     chips.push(opt('showOccupied', 'Occupied', 'Occupied territory (DeepState)'));
     const ru = (S.state?.ru_zones || []).length;
